@@ -1,0 +1,21 @@
+{
+  "name": "yilu/complex-search",
+  "description": "laravel complex search",
+  "type": "library",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "yilu",
+      "email": "yilu@yilu-tech.com"
+    }
+  ],
+  "minimum-stability": "dev",
+  "require": {
+    "php": ">=5.6.4",
+  },
+  "autoload": {
+    "psr-4": {
+      "Yilu\\ComplexSearch\\": "src/"
+    }
+  }
+}
