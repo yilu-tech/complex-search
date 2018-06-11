@@ -2,7 +2,6 @@
 
 namespace Yilu\ComplexSearch;
 
-use App\Exceptions\BusinessException;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -134,8 +133,9 @@ class ComplexSearch
         }
         foreach ($relation->childNodes as $key => $value) {
             $fields[] = [
-                'label' => trans($this->lang . '.' . $relation->name . '.' . $key),
+                'path' => $relation->path ? $relation->path . '.' . $key : $key,
                 'name' => $relation->path ? "{$relation->path}.{$key}.*" : $key . '.*',
+                'label' => trans($this->lang . '.' . $relation->name . '.' . $key),
                 'children' => $this->getFields($value)
             ];
         }
@@ -222,7 +222,6 @@ class ComplexSearch
                 $condition = $this->formatWhere($condition);
             }
         }
-
         return $conditions;
     }
 
@@ -344,8 +343,7 @@ class ComplexSearch
                 $params[2] = '%' . $params[2] . '%';
             }
         }
-        $field[0] = $this->makRaw($field, false);
-
+        $params[0] = $this->makRaw($field, false);
         if ($params[1] === '=' && $params[2] === null) {
             $where = ['fun' => 'whereNull', 'argv' => [$params[0], $boolean]];
         } elseif ($params[1] === '<>' && $params[2] === null) {
@@ -513,7 +511,7 @@ class ComplexSearch
      * @param $field
      * @param $relation RelationNode
      * @return mixed
-     * @throws BusinessException
+     * @throws \Exception
      */
     private function findByRelations($field, $relation)
     {
@@ -521,14 +519,32 @@ class ComplexSearch
         $joins = $relation->join;
         $value = array_pop($argv);
 
-        foreach ($argv as $join) {
-            if (!isset($relation->childNodes[$join])) {
-                throw new BusinessException('relation not exist', [$field, $join]);
+        $relations = [[$relation, $joins]];
+        while (count($relations)) {
+            $children = [];
+            $join = current($argv);
+            foreach ($relations as $item) {
+                if (isset($item[0]->childNodes[$join])) {
+                    $relation = $item[0]->childNodes[$join];
+                    if (next($argv) === false) {
+                        $joins = array_merge($item[1], $relation->join);
+                    } else {
+                        $children[] = [$relation, array_merge($item[1], $relation->join)];
+                    }
+                    break;
+                }
+                foreach ($item[0]->childNodes as $childNode) {
+                    $children[] = [$childNode, array_merge($item[1], $childNode->join)];
+                }
             }
-            $relation = $relation->childNodes[$join];
-            $joins = array_merge($joins, $relation->join);
+            if (current($argv) === false) {
+                break;
+            }
+            $relations = $children;
         }
-
+        if (current($argv) !== false) {
+            throw new \Exception("field \"$field\" relation \"" . current($argv) . "\" not exist");
+        }
         if ($argv = $this->findInJoins($value, $joins, $relation)) {
             $this->setJoins($joins);
             return $this->addKey($relation->fields[$argv[1]], 'table', $argv[0]);
@@ -539,7 +555,7 @@ class ComplexSearch
             $field = $value === '*' ? $this->makeField($field, null, '*') : $relation->fields[$value];
             return $this->addKey($field, 'table', $relation->name);
         } else {
-            throw new BusinessException('field not exist', [$field, $value]);
+            throw new \Exception("field \"$field\" \"$value\" not exist");
         }
     }
 
