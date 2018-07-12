@@ -27,6 +27,8 @@ class ComplexSearch
      */
     protected $relations;
 
+    protected $headers = array();
+
     protected $conditions = array();
 
     protected $customJoins = array();
@@ -58,28 +60,40 @@ class ComplexSearch
 
     public function make($request)
     {
-        if (!$this->root) {
-            throw new \Exception('root null');
-        }
-        if (is_string($this->root)) {
-            $this->root = new $this->root;
-        }
-
         $this->request = $request;
+
         $this->action = $this->input('action');
 
-        $this->makeRelations($this->root, $this->range);
+        if ($this->root) {
+
+            if (is_string($this->root)) {
+                $this->root = new $this->root;
+            }
+
+            $this->makeRelations($this->root, $this->range);
+        }
     }
 
     public function get()
     {
         if ($this->action === 'fields') {
 
-            return $this->getFields();
+            return $this->root ? [
+                'fields' => $this->getFields(),
+                'headers' => $this->headers
+            ] : [
+                'conditions' => $this->getConditions(),
+                'headers' => $this->headers
+            ];
 
         } elseif ($this->action === 'query') {
 
-            if (!$this->query) $this->query();
+            if (!$this->query) {
+
+                if (!$this->root) return [];
+
+                $this->query();
+            }
 
             $this->addJoins();
 
@@ -115,6 +129,18 @@ class ComplexSearch
         return $this->query;
     }
 
+    public function getConditions()
+    {
+        $conditions = array();
+        foreach ($this->conditions as $key => $condition) {
+
+            $condition['name'] = $key;
+
+            $conditions[] = $condition;
+        }
+        return $conditions;
+    }
+
     /**
      * @param $relation RelationNode
      * @return array
@@ -133,9 +159,8 @@ class ComplexSearch
         }
         foreach ($relation->childNodes as $key => $value) {
             $fields[] = [
-                'path' => $relation->path ? $relation->path . '.' . $key : $key,
-                'name' => $relation->path ? "{$relation->path}.{$key}.*" : $key . '.*',
                 'label' => trans($this->lang . '.' . $relation->name . '.' . $key),
+                'name' => $relation->path ? "{$relation->path}.{$key}.*" : $key . '.*',
                 'children' => $this->getFields($value)
             ];
         }
@@ -222,6 +247,7 @@ class ComplexSearch
                 $condition = $this->formatWhere($condition);
             }
         }
+
         return $conditions;
     }
 
@@ -343,7 +369,8 @@ class ComplexSearch
                 $params[2] = '%' . $params[2] . '%';
             }
         }
-        $params[0] = $this->makRaw($field, false);
+        $field[0] = $this->makRaw($field, false);
+
         if ($params[1] === '=' && $params[2] === null) {
             $where = ['fun' => 'whereNull', 'argv' => [$params[0], $boolean]];
         } elseif ($params[1] === '<>' && $params[2] === null) {
@@ -511,7 +538,7 @@ class ComplexSearch
      * @param $field
      * @param $relation RelationNode
      * @return mixed
-     * @throws \Exception
+     * @throws BusinessException
      */
     private function findByRelations($field, $relation)
     {
@@ -519,32 +546,14 @@ class ComplexSearch
         $joins = $relation->join;
         $value = array_pop($argv);
 
-        $relations = [[$relation, $joins]];
-        while (count($relations)) {
-            $children = [];
-            $join = current($argv);
-            foreach ($relations as $item) {
-                if (isset($item[0]->childNodes[$join])) {
-                    $relation = $item[0]->childNodes[$join];
-                    if (next($argv) === false) {
-                        $joins = array_merge($item[1], $relation->join);
-                    } else {
-                        $children[] = [$relation, array_merge($item[1], $relation->join)];
-                    }
-                    break;
-                }
-                foreach ($item[0]->childNodes as $childNode) {
-                    $children[] = [$childNode, array_merge($item[1], $childNode->join)];
-                }
+        foreach ($argv as $join) {
+            if (!isset($relation->childNodes[$join])) {
+                throw new BusinessException('relation not exist', [$field, $join]);
             }
-            if (current($argv) === false) {
-                break;
-            }
-            $relations = $children;
+            $relation = $relation->childNodes[$join];
+            $joins = array_merge($joins, $relation->join);
         }
-        if (current($argv) !== false) {
-            throw new \Exception("field \"$field\" relation \"" . current($argv) . "\" not exist");
-        }
+
         if ($argv = $this->findInJoins($value, $joins, $relation)) {
             $this->setJoins($joins);
             return $this->addKey($relation->fields[$argv[1]], 'table', $argv[0]);
@@ -555,7 +564,7 @@ class ComplexSearch
             $field = $value === '*' ? $this->makeField($field, null, '*') : $relation->fields[$value];
             return $this->addKey($field, 'table', $relation->name);
         } else {
-            throw new \Exception("field \"$field\" \"$value\" not exist");
+            throw new BusinessException('field not exist', [$field, $value]);
         }
     }
 
@@ -713,23 +722,41 @@ class ComplexSearch
             $fn_name = is_int($key) ? $value : $key;
             $relation = $model->$fn_name();
             if ($relation instanceof BelongsTo) {
-
-                $relations[$fn_name] = [[$relation->getRelated(), $relation->getQualifiedOwnerKeyName(), $relation->getQualifiedForeignKey()]];
+                if (app()->version() < '5.6') {
+                    $relations[$fn_name] = [[$relation->getRelated(), $relation->getOtherKey(), $relation->getQualifiedForeignKey()]];
+                } else {
+                    $relations[$fn_name] = [[$relation->getRelated(), $relation->getQualifiedOwnerKeyName(), $relation->getQualifiedForeignKey()]];
+                }
 
             } elseif ($relation instanceof HasOne || $relation instanceof HasMany) {
 
-                $relations[$fn_name] = [[$relation->getRelated(), $relation->getQualifiedForeignKeyName(), $relation->getQualifiedParentKeyName()]];
+                if (app()->version() < '5.6') {
+                    $relations[$fn_name] = [[$relation->getRelated(), $relation->getForeignKey(), $relation->getQualifiedParentKeyName()]];
+                } else {
+                    $relations[$fn_name] = [[$relation->getRelated(), $relation->getQualifiedForeignKeyName(), $relation->getQualifiedParentKeyName()]];
+                }
 
             } elseif ($relation instanceof BelongsToMany) {
 
-                $relations[$fn_name] = [[$relation->getTable(), $relation->getForeignKey(), $relation->getQualifiedParentKeyName()],
-                    [$relation->getRelated(), $relation->getRelated()->getQualifiedKeyName(), $relation->getOtherKey()]];
+                if (app()->version() < '5.6') {
+                    $relations[$fn_name] = [[$relation->getTable(), $relation->getForeignKey(), $relation->getQualifiedParentKeyName()],
+                        [$relation->getRelated(), $relation->getRelated()->getQualifiedKeyName(), $relation->getOtherKey()]];
+                } else {
+                    $relations[$fn_name] = [[$relation->getTable(), $relation->getForeignPivotKeyName(), $relation->getQualifiedParentKeyName()],
+                        [$relation->getRelated(), $relation->getRelated()->getQualifiedKeyName(), $relation->getQualifiedRelatedPivotKeyName()]];
+                }
 
             } elseif ($relation instanceof HasManyThrough) {
 
-                $localKey = is_int($key) ? $relation->getHasCompareKey() : $model->getTable() . '.' . $value;
-                $relations[$fn_name] = [[$relation->getParent(), $localKey, $relation->getThroughKey()],
-                    [$relation->getRelated(), $relation->getQualifiedParentKeyName(), $relation->getForeignKey()]];
+                if (app()->version() < '5.6') {
+                    $localKey = is_int($key) ? $relation->getHasCompareKey() : $model->getTable() . '.' . $value;
+                    $relations[$fn_name] = [[$relation->getParent(), $localKey, $relation->getThroughKey()],
+                        [$relation->getRelated(), $relation->getQualifiedParentKeyName(), $relation->getForeignKey()]];
+                } else {
+//                    $localKey = is_int($key) ? $relation->getHasCompareKey() : $model->getTable() . '.' . $value;
+                    $relations[$fn_name] = [[$relation->getParent(), $relation->getQualifiedFirstKeyName(), $relation->getQualifiedLocalKeyName()],
+                        [$relation->getRelated(), $relation->getQualifiedParentKeyName(), $relation->getQualifiedForeignKeyName()]];
+                }
             }
         }
         return $relations;
