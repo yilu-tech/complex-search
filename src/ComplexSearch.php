@@ -722,7 +722,7 @@ class ComplexSearch
             $fn_name = is_int($key) ? $value : $key;
             $relation = $model->$fn_name();
             if ($relation instanceof BelongsTo) {
-                if (app()->version() < '5.6') {
+                if (app()->version() < '5.5') {
                     $relations[$fn_name] = [[$relation->getRelated(), $relation->getOtherKey(), $relation->getQualifiedForeignKey()]];
                 } else {
                     $relations[$fn_name] = [[$relation->getRelated(), $relation->getQualifiedOwnerKeyName(), $relation->getQualifiedForeignKey()]];
@@ -730,7 +730,7 @@ class ComplexSearch
 
             } elseif ($relation instanceof HasOne || $relation instanceof HasMany) {
 
-                if (app()->version() < '5.6') {
+                if (app()->version() < '5.5') {
                     $relations[$fn_name] = [[$relation->getRelated(), $relation->getForeignKey(), $relation->getQualifiedParentKeyName()]];
                 } else {
                     $relations[$fn_name] = [[$relation->getRelated(), $relation->getQualifiedForeignKeyName(), $relation->getQualifiedParentKeyName()]];
@@ -738,7 +738,7 @@ class ComplexSearch
 
             } elseif ($relation instanceof BelongsToMany) {
 
-                if (app()->version() < '5.6') {
+                if (app()->version() < '5.5') {
                     $relations[$fn_name] = [[$relation->getTable(), $relation->getForeignKey(), $relation->getQualifiedParentKeyName()],
                         [$relation->getRelated(), $relation->getRelated()->getQualifiedKeyName(), $relation->getOtherKey()]];
                 } else {
@@ -748,7 +748,7 @@ class ComplexSearch
 
             } elseif ($relation instanceof HasManyThrough) {
 
-                if (app()->version() < '5.6') {
+                if (app()->version() < '5.5') {
                     $localKey = is_int($key) ? $relation->getHasCompareKey() : $model->getTable() . '.' . $value;
                     $relations[$fn_name] = [[$relation->getParent(), $localKey, $relation->getThroughKey()],
                         [$relation->getRelated(), $relation->getQualifiedParentKeyName(), $relation->getForeignKey()]];
