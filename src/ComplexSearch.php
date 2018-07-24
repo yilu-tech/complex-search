@@ -27,6 +27,16 @@ class ComplexSearch
      */
     protected $relations;
 
+    protected $orderBy;
+
+    protected $groupBy = array();
+
+    protected $whereDef = array();
+
+    protected $joinDef = array();
+
+    protected $groupDef = array();
+
     protected $headers = array();
 
     protected $conditions = array();
@@ -56,7 +66,7 @@ class ComplexSearch
         'date' => ['=', '<>', '>', '>=', '<', '<=', 'in']
     ];
 
-    private $fun = ['add', 'mul', 'sub', 'div', 'sum', 'max', 'min', 'count', 'avg', 'if', 'date_format', 'round', 'cast'];
+    private $fun = ['add', 'mul', 'sub', 'div', 'sum', 'max', 'min', 'count', 'avg', 'if', 'date_format', 'round', 'cast', 'concat'];
 
     public function make($request)
     {
@@ -71,6 +81,16 @@ class ComplexSearch
             }
 
             $this->makeRelations($this->root, $this->range);
+
+            if ($this->action === 'fields') {
+                if (method_exists($this, 'addOptions')) {
+                    $this->addOptions();
+                }
+
+                foreach ($this->conditions as $key => $condition) {
+                    $this->bindCondition($this->find($key), $condition);
+                }
+            }
         }
     }
 
@@ -122,7 +142,7 @@ class ComplexSearch
             }
 
             $groupBy = $this->getGroupBy();
-            if ($orderBy) {
+            if ($groupBy) {
                 $this->addGroupBy($this->query, $groupBy);
             }
         }
@@ -169,9 +189,9 @@ class ComplexSearch
 
     private function validateField($field, $relation)
     {
-        if ($relation->primaryKey === $field) {
-            return false;
-        }
+//        if ($relation->primaryKey === $field) {
+//            return false;
+//        }
         foreach ($this->filterPreg as $value) {
             if (preg_match("/{$value}/", $field)) {
                 return false;
@@ -219,19 +239,25 @@ class ComplexSearch
             return $this->fields[$field];
         }
         if ($argv[0] === '*') {
-            $array = $this->makeField('*', null, '*');
-            $array = $this->addKey($array, 'table', $this->relations->name);
+            $mix = $this->makeField('*', null, '*');
+            $mix['table'] = $this->relations->name;
         } elseif (strpos($argv[0], '.') > 0) {
-            $array = $this->findByRelations($argv[0], $this->relations);
+            $mix = $this->findByRelations($argv[0], $this->relations);
         } else {
-            $array = $this->findInRelations($argv[0], $this->relations);
+            $mix = $this->findInRelations($argv[0], $this->relations);
         }
-        if (!$array) {
+        if (!$mix) {
             throw new \Exception("field \"$field\" not exist");
         }
-        $array['rename'] = $argv[1];
-        $this->fields[$field] = $array;
-        return $array;
+        if (isset($mix['model'])) {
+            $this->setGroupBy($mix['model']);
+            $mix = array_merge($mix['model']->fields[$mix['field']], [
+                'table' => isset($mix['table']) ? $mix['table'] : $mix['model']->name
+            ]);
+        }
+        $mix['rename'] = $argv[1];
+        $this->fields[$field] = $mix;
+        return $mix;
     }
 
     public function getQueryConditions()
@@ -255,6 +281,10 @@ class ComplexSearch
     {
         foreach ($conditions as $condition) {
             if (isset($condition['fun'])) {
+                if (isset($this->whereDef[$condition['argv'][0]])) {
+                    $this->whereDef[$condition['argv'][0]]($query, $condition);
+                    continue;
+                }
                 $query->{$condition['fun']}(...$condition['argv']);
             } else {
                 $query->where(function ($query) use ($condition) {
@@ -262,7 +292,6 @@ class ComplexSearch
                 });
             }
         }
-
         return $this;
     }
 
@@ -302,17 +331,33 @@ class ComplexSearch
     public function getGroupBy($default = null)
     {
         $value = $this->input('groupBy', $default);
-        if ($value) {
+        if ($value && is_string($value)) {
             $value = $this->makRaw($this->find($value), false);
         }
         return $value;
     }
 
-    protected function addGroupBy($query, $field)
+    protected function addGroupBy($query, $groups)
     {
-        $query->groupBy($field);
+        $query->groupBy(...$groups);
 
         return $this;
+    }
+
+    private function setGroupBy($model)
+    {
+        $paths = explode('.', $model->path);
+        $groups = array();
+
+        while (count($paths)) {
+            $path = array_pop($paths);
+            if (in_array($path, $this->groupDef)) {
+                array_unshift($groups, $model->join[0][2]);
+            }
+            $model = $model->parentNode;
+        }
+
+        $this->groupBy = array_unique(array_merge($this->groupBy, $groups));
     }
 
     public function getOrderBy($default = null)
@@ -330,9 +375,9 @@ class ComplexSearch
         ];
     }
 
-    private function addOrderBy($query, $field, $direction = 'asc')
+    protected function addOrderBy($query, $orderBy)
     {
-        $query->orderBy($field, $direction);
+        $query->orderBy($orderBy['field'], $orderBy['direction']);
 
         return $this;
     }
@@ -345,7 +390,27 @@ class ComplexSearch
     protected function addJoins()
     {
         foreach ($this->joins as $join) {
-            $this->query->leftJoin($join[0], $join[1], '=', $join[2]);
+            if (isset($this->join[$join[0]])) {
+                $this->join[$join[0]]($this->query);
+            } else {
+                $this->query->leftJoin($join[0], $join[1], '=', $join[2]);
+            }
+        }
+    }
+
+    private function bindCondition($field, $condition)
+    {
+        $relations = [$this->relations];
+
+        while (count($relations)) {
+            $relation = array_shift($relations);
+            if ($relation->name === $field['table']) {
+                $relation->fields[$field['name']] = array_merge($relation->fields[$field['name']], $condition);
+                return;
+            }
+            if (count($relation->childNodes)) {
+                $relations = array_merge($relations, array_values($relations->childNodes));
+            }
         }
     }
 
@@ -369,7 +434,7 @@ class ComplexSearch
                 $params[2] = '%' . $params[2] . '%';
             }
         }
-        $field[0] = $this->makRaw($field, false);
+        $params[0] = $field['custom'] ? $field['rename'] : $this->makRaw($field, false);
 
         if ($params[1] === '=' && $params[2] === null) {
             $where = ['fun' => 'whereNull', 'argv' => [$params[0], $boolean]];
@@ -401,6 +466,11 @@ class ComplexSearch
         if (array_key_exists($key, $this->request)) {
             return $this->request[$key];
         }
+
+        if (!empty($this->{$key})) {
+            return $this->{$key};
+        }
+
         return $default;
     }
 
@@ -466,10 +536,11 @@ class ComplexSearch
                         $field = $field['table'] . '.' . $field['_value'];
                         $value = preg_replace('/{.+?}/', $field, $value, 1);
                     }
-                } else {
-                    $field = $this->find($value);
-                    $value = $field['table'] . '.' . $field['_value'];
                 }
+//                else {
+//                    $field = $this->find($value);
+//                    $value = $field['table'] . '.' . $field['_value'];
+//                }
             }
         }
         return $params;
@@ -556,13 +627,15 @@ class ComplexSearch
 
         if ($argv = $this->findInJoins($value, $joins, $relation)) {
             $this->setJoins($joins);
-            return $this->addKey($relation->fields[$argv[1]], 'table', $argv[0]);
+            return ['model' => $relation, 'field' => $argv[1], 'table' => $argv[0]];
         }
 
         if (isset($relation->fields[$value])) {
             $this->setJoins($joins);
-            $field = $value === '*' ? $this->makeField($field, null, '*') : $relation->fields[$value];
-            return $this->addKey($field, 'table', $relation->name);
+            if ($value === '*') {
+                return $this->addKey($this->makeField($field, null, '*'), 'table', $relation->name);
+            }
+            return ['model' => $relation, 'field' => $value];
         } else {
             throw new BusinessException('field not exist', [$field, $value]);
         }
@@ -583,11 +656,11 @@ class ComplexSearch
 
                 if ($argv = $this->findInJoins($field, $joins, $item[0])) {
                     $this->setJoins($item[1]);
-                    return $this->addKey($item[0]->fields[$argv[1]], 'table', $argv[0]);
+                    return ['model' => $item[0], 'field' => $argv[1], 'table' => $argv[0]];
                 }
                 if (isset($item[0]->fields[$field])) {
                     $this->setJoins($joins);
-                    return $this->addKey($item[0]->fields[$field], 'table', $item[0]->name);
+                    return ['model' => $item[0], 'field' => $field];
                 }
 
                 foreach ($item[0]->childNodes as $value) {
@@ -687,22 +760,12 @@ class ComplexSearch
 
     private function makeField($name, $type, $value, $custom = false)
     {
-        $field = isset($this->conditions[$name]) ? $this->conditions[$name] : [];
-        foreach ($field as &$_value) {
-            if ($_value instanceof \Closure) {
-                $_value = $_value();
-            }
-        }
-        $field['name'] = $name;
-        $field['_value'] = $value;
-        $field['custom'] = $custom;
-        if (!isset($field['itype'])) {
-            $field['itype'] = $type;
-        }
-        if (!isset($field['ctype'])) {
-            $field['ctype'] = null;
-        }
-        return $field;
+        return [
+            'name' => $name,
+            '_value' => $value,
+            'itype' => $type,
+            'custom' => $custom,
+        ];
     }
 
     /**
@@ -722,7 +785,7 @@ class ComplexSearch
             $fn_name = is_int($key) ? $value : $key;
             $relation = $model->$fn_name();
             if ($relation instanceof BelongsTo) {
-                if (app()->version() < '5.5') {
+                if (app()->version() < '5.6') {
                     $relations[$fn_name] = [[$relation->getRelated(), $relation->getOtherKey(), $relation->getQualifiedForeignKey()]];
                 } else {
                     $relations[$fn_name] = [[$relation->getRelated(), $relation->getQualifiedOwnerKeyName(), $relation->getQualifiedForeignKey()]];
@@ -730,7 +793,7 @@ class ComplexSearch
 
             } elseif ($relation instanceof HasOne || $relation instanceof HasMany) {
 
-                if (app()->version() < '5.5') {
+                if (app()->version() < '5.6') {
                     $relations[$fn_name] = [[$relation->getRelated(), $relation->getForeignKey(), $relation->getQualifiedParentKeyName()]];
                 } else {
                     $relations[$fn_name] = [[$relation->getRelated(), $relation->getQualifiedForeignKeyName(), $relation->getQualifiedParentKeyName()]];
@@ -738,7 +801,7 @@ class ComplexSearch
 
             } elseif ($relation instanceof BelongsToMany) {
 
-                if (app()->version() < '5.5') {
+                if (app()->version() < '5.6') {
                     $relations[$fn_name] = [[$relation->getTable(), $relation->getForeignKey(), $relation->getQualifiedParentKeyName()],
                         [$relation->getRelated(), $relation->getRelated()->getQualifiedKeyName(), $relation->getOtherKey()]];
                 } else {
@@ -748,7 +811,7 @@ class ComplexSearch
 
             } elseif ($relation instanceof HasManyThrough) {
 
-                if (app()->version() < '5.5') {
+                if (app()->version() < '5.6') {
                     $localKey = is_int($key) ? $relation->getHasCompareKey() : $model->getTable() . '.' . $value;
                     $relations[$fn_name] = [[$relation->getParent(), $localKey, $relation->getThroughKey()],
                         [$relation->getRelated(), $relation->getQualifiedParentKeyName(), $relation->getForeignKey()]];

@@ -59,7 +59,7 @@ class OperationNode
                 $value = $value[1];
             }
         }
-        return ($this->operator ? '' : $this->fun) . '(' . implode($this->operator ?: ',', $this->values) . ')';
+        return ($this->operator ? '' : $this->fun) . '(' . implode($this->operator ?: ',', $values) . ')';
     }
 
     private function type($fun)
