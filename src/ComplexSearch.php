@@ -74,22 +74,23 @@ class ComplexSearch
 
         $this->action = $this->input('action');
 
-        if ($this->root) {
+        if (!$this->root) return;
 
-            if (is_string($this->root)) {
-                $this->root = new $this->root;
-            }
+        if (is_string($this->root)) {
+            $this->root = new $this->root;
+        }
 
-            $this->makeRelations($this->root, $this->range);
+        $this->makeRelations($this->root, $this->range);
 
-            if ($this->action === 'fields') {
-                if (method_exists($this, 'addOptions')) {
-                    $this->addOptions();
-                }
+        if ($this->action !== 'fields') return;
 
-                foreach ($this->conditions as $key => $condition) {
-                    $this->bindCondition($this->find($key), $condition);
-                }
+        if (method_exists($this, 'addOptions')) {
+            $this->addOptions();
+        }
+
+        foreach ($this->conditions as $key => $condition) {
+            if (!isset($condition['custom'])) {
+                $this->bindCondition($this->find($key), $condition);
             }
         }
     }
@@ -99,7 +100,7 @@ class ComplexSearch
         if ($this->action === 'fields') {
 
             return $this->root ? [
-                'fields' => $this->getFields(),
+                'fields' => array_merge($this->getFields(), $this->getConditions(true)),
                 'headers' => $this->headers
             ] : [
                 'conditions' => $this->getConditions(),
@@ -149,14 +150,18 @@ class ComplexSearch
         return $this->query;
     }
 
-    public function getConditions()
+    public function getConditions($custom = false)
     {
         $conditions = array();
         foreach ($this->conditions as $key => $condition) {
-
             $condition['name'] = $key;
-
-            $conditions[] = $condition;
+            if ($custom) {
+                if (isset($condition['custom'])) {
+                    $conditions[] = $condition;
+                }
+            } else {
+                $conditions[] = $condition;
+            }
         }
         return $conditions;
     }
@@ -171,7 +176,9 @@ class ComplexSearch
         $fields = array();
         foreach ($relation->fields as $key => $value) {
             if ($this->validateField($value['name'], $relation)) {
-                $value['label'] = trans($this->lang . '.' . $relation->name . '.' . $key);
+                if (empty($value['label'])) {
+                    $value['label'] = trans($this->lang . '.' . $relation->name . '.' . $key);
+                }
                 unset($value['_value']);
                 unset($value['custom']);
                 $fields[] = $value;
@@ -346,17 +353,20 @@ class ComplexSearch
 
     private function setGroupBy($model)
     {
+        if (!$model->path) return;
         $paths = explode('.', $model->path);
         $groups = array();
-
         while (count($paths)) {
             $path = array_pop($paths);
-            if (in_array($path, $this->groupDef)) {
-                array_unshift($groups, $model->join[0][2]);
+            foreach ($this->groupDef as $key => $value) {
+                if ($key === $path) {
+                    array_unshift($groups, $this->field($value));
+                } else if (is_int($key) && $value === $path) {
+                    array_unshift($groups, $model->join[0][2]);
+                }
             }
             $model = $model->parentNode;
         }
-
         $this->groupBy = array_unique(array_merge($this->groupBy, $groups));
     }
 
@@ -409,7 +419,7 @@ class ComplexSearch
                 return;
             }
             if (count($relation->childNodes)) {
-                $relations = array_merge($relations, array_values($relations->childNodes));
+                $relations = array_merge($relations, array_values($relation->childNodes));
             }
         }
     }
@@ -609,17 +619,17 @@ class ComplexSearch
      * @param $field
      * @param $relation RelationNode
      * @return mixed
-     * @throws BusinessException
      */
     private function findByRelations($field, $relation)
     {
+
         $argv = explode('.', $field);
         $joins = $relation->join;
         $value = array_pop($argv);
 
         foreach ($argv as $join) {
             if (!isset($relation->childNodes[$join])) {
-                throw new BusinessException('relation not exist', [$field, $join]);
+                throw new \Exception(" \"{$field}\" relation \"{$join}\" not exist");
             }
             $relation = $relation->childNodes[$join];
             $joins = array_merge($joins, $relation->join);
@@ -637,7 +647,7 @@ class ComplexSearch
             }
             return ['model' => $relation, 'field' => $value];
         } else {
-            throw new BusinessException('field not exist', [$field, $value]);
+            throw new \Exception("field \"{$field}\" value \"{$value}\" not exist");
         }
     }
 
@@ -786,7 +796,7 @@ class ComplexSearch
             $relation = $model->$fn_name();
             if ($relation instanceof BelongsTo) {
                 if (app()->version() < '5.6') {
-                    $relations[$fn_name] = [[$relation->getRelated(), $relation->getOtherKey(), $relation->getQualifiedForeignKey()]];
+                    $relations[$fn_name] = [[$relation->getRelated(), $relation->getQualifiedOtherKeyName(), $relation->getQualifiedForeignKey()]];
                 } else {
                     $relations[$fn_name] = [[$relation->getRelated(), $relation->getQualifiedOwnerKeyName(), $relation->getQualifiedForeignKey()]];
                 }
