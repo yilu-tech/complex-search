@@ -74,19 +74,21 @@ class ComplexSearch
 
         $this->action = $this->input('action');
 
-        if (!$this->root) return;
+        if ($this->root) {
+            if (is_string($this->root)) {
+                $this->root = new $this->root;
+            }
 
-        if (is_string($this->root)) {
-            $this->root = new $this->root;
+            $this->makeRelations($this->root, $this->range);
         }
-
-        $this->makeRelations($this->root, $this->range);
 
         if ($this->action !== 'fields') return;
 
         if (method_exists($this, 'addOptions')) {
             $this->addOptions();
         }
+
+        if (!$this->root) return;
 
         foreach ($this->conditions as $key => $condition) {
             if (!isset($condition['custom'])) {
@@ -111,9 +113,9 @@ class ComplexSearch
 
             if (!$this->query) {
 
-                if (!$this->root) return [];
+//                if (!$this->root) return [];
 
-                $this->query();
+                $this->query = $this->query();
             }
 
             $this->addJoins();
@@ -265,6 +267,19 @@ class ComplexSearch
         $mix['rename'] = $argv[1];
         $this->fields[$field] = $mix;
         return $mix;
+    }
+
+    public function input($key, $default = null)
+    {
+        if (array_key_exists($key, $this->request)) {
+            return $this->request[$key];
+        }
+
+        if (!empty($this->{$key})) {
+            return $this->{$key};
+        }
+
+        return $default;
     }
 
     public function getQueryConditions()
@@ -469,19 +484,6 @@ class ComplexSearch
             return \DB::raw($field['table'] . '.' . $field['_value'] . ' as ' . $field['rename']);
         }
         return $field['table'] . '.' . $field['_value'];
-    }
-
-    private function input($key, $default = null)
-    {
-        if (array_key_exists($key, $this->request)) {
-            return $this->request[$key];
-        }
-
-        if (!empty($this->{$key})) {
-            return $this->{$key};
-        }
-
-        return $default;
     }
 
     /*********************************************************/
