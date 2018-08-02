@@ -189,7 +189,7 @@ class ComplexSearch
         foreach ($relation->childNodes as $key => $value) {
             $fields[] = [
                 'label' => trans($this->lang . '.' . $relation->name . '.' . $key),
-                'name' => $relation->path ? "{$relation->path}.{$key}.*" : $key . '.*',
+                'name' => $key . '.*',
                 'children' => $this->getFields($value)
             ];
         }
