@@ -78,8 +78,7 @@ class ComplexSearch
             if (is_string($this->root)) {
                 $this->root = new $this->root;
             }
-
-            $this->makeRelations($this->root, $this->range);
+            $this->makeRelation($this->root, $this->range);
         }
 
         if ($this->action !== 'fields') return;
@@ -90,11 +89,7 @@ class ComplexSearch
 
         if (!$this->root) return;
 
-        foreach ($this->conditions as $key => $condition) {
-            if (!isset($condition['custom'])) {
-                $this->bindCondition($this->find($key), $condition);
-            }
-        }
+        $this->bindCondition();
     }
 
     public function get()
@@ -169,26 +164,26 @@ class ComplexSearch
     }
 
     /**
-     * @param $relation RelationNode
+     * @param $node RelationNode
      * @return array
      */
-    public function getFields($relation = null)
+    public function getFields($node = null)
     {
-        $relation = $relation ?: $this->relations;
+        $node = $node ?: $this->relations;
         $fields = array();
-        foreach ($relation->fields as $key => $value) {
-            if ($this->validateField($value['name'], $relation)) {
+        foreach ($node->fields as $key => $value) {
+            if ($this->validateField($value['name'], $node)) {
                 if (empty($value['label'])) {
-                    $value['label'] = trans($this->lang . '.' . $relation->name . '.' . $key);
+                    $value['label'] = trans($this->lang . '.' . $node->table . '.' . $key);
                 }
                 unset($value['_value']);
                 unset($value['custom']);
                 $fields[] = $value;
             }
         }
-        foreach ($relation->childNodes as $key => $value) {
+        foreach ($node->childNodes as $key => $value) {
             $fields[] = [
-                'label' => trans($this->lang . '.' . $relation->name . '.' . $key),
+                'label' => trans($this->lang . '.' . $node->table . '.' . $key),
                 'name' => $key . '.*',
                 'children' => $this->getFields($value)
             ];
@@ -196,9 +191,9 @@ class ComplexSearch
         return $fields;
     }
 
-    private function validateField($field, $relation)
+    private function validateField($field, $node)
     {
-//        if ($relation->primaryKey === $field) {
+//        if ($node->primaryKey === $field) {
 //            return false;
 //        }
         foreach ($this->filterPreg as $value) {
@@ -209,64 +204,38 @@ class ComplexSearch
         return true;
     }
 
-    public function addRelation($fk, $model, $table = 'root', $pk = 'id')
+    public function field($field, $type = 0)
     {
-        $relation = $table === 'root' ? $this->relations : $this->relations->findNode($table);
-
-        if (!$relation) {
-            throw new \Exception("table \"{$table}\" not exist");
-        }
-
-        if (!isset($relation->fields[$pk])) {
-            throw new \Exception("foreignKey \"{$fk}\" not in \"{$table}\"");
-        }
-
-        $name = $model->getTable();
-
-        $join = [[$model, "{$name}.{$pk}", "{$relation->name}.{$fk}"]];
-
-        $node = new RelationNode($model, $join);
-
-        $relation->addChild($name, $node);
-
-        $node->fields = $this->getFieldsByModel($model, $node->path, $node->foreignKey);
+        return $this->makRaw($this->find($field, $type), false);
     }
 
-    public function field($field)
+    public function find($str, $type = 0)
     {
-        return $this->makRaw($this->find($field), false);
-    }
-
-    public function find($field)
-    {
-        $argv = explode('|', $field);
-        if (count($argv) === 1) {
-            $temp = explode('.', $field);
-            $argv[1] = end($temp) === '*' ? $field : current($temp);
+        $field = $this->parseField($str);
+        $nodes = [$this->relations];
+        while (count($nodes)) {
+            $node = array_shift($nodes);
+            if ($this->machField($field, $node, $mach, $type)) {
+                if ($mach) {
+                    $field['table'] = $mach->parentNode->table;
+                    $field['name'] = $mach->otherKey;
+                    $field['node'] = $mach->parentNode;
+                    if (!$field['rename']) $field['rename'] = $field['name'];
+                } else {
+                    $field['table'] = $node->table;
+                    $field['node'] = $node;
+                }
+                break;
+            }
+            foreach ($node->childNodes as $node) array_push($nodes, $node);
         }
-        if (isset($this->fields[$field])) {
-            return $this->fields[$field];
+        if (!isset($field['node'])) {
+            throw new \Exception("field \"$str\" not exist");
         }
-        if ($argv[0] === '*') {
-            $mix = $this->makeField('*', null, '*');
-            $mix['table'] = $this->relations->name;
-        } elseif (strpos($argv[0], '.') > 0) {
-            $mix = $this->findByRelations($argv[0], $this->relations);
-        } else {
-            $mix = $this->findInRelations($argv[0], $this->relations);
-        }
-        if (!$mix) {
-            throw new \Exception("field \"$field\" not exist");
-        }
-        if (isset($mix['model'])) {
-            $this->setGroupBy($mix['model']);
-            $mix = array_merge($mix['model']->fields[$mix['field']], [
-                'table' => isset($mix['table']) ? $mix['table'] : $mix['model']->name
-            ]);
-        }
-        $mix['rename'] = $argv[1];
-        $this->fields[$field] = $mix;
-        return $mix;
+        $field = array_merge($field, $field['node']->fields[$field['name']]);
+        $this->setJoins($field['node']->joins());
+        $this->setGroupBy($field['node']);
+        return $field;
     }
 
     public function input($key, $default = null)
@@ -280,6 +249,23 @@ class ComplexSearch
         }
 
         return $default;
+    }
+
+    public function hasCondition($field, $code = 0)
+    {
+        $conditions = $this->input('params', []);
+        $bool = [0, 0];
+        foreach ($conditions as $condition) {
+            if (is_array($condition[0])) {
+                foreach ($condition as $key => $item) {
+                    if ($code <= 0 && $item[0] === $field) $bool[1] = -1;
+                }
+            } else {
+                if ($code >= 0 && $condition[0] === $field) $bool[0] = 1;
+            }
+            if (($bool[0] * $code > 0) || ($bool[1] ^ $code > 0) || ($bool[0] && $bool[1])) return true;
+        }
+        return false;
     }
 
     public function getQueryConditions()
@@ -321,7 +307,6 @@ class ComplexSearch
     {
         $fields = $this->input('fields', []);
         $fields = array_unique(array_merge($fields, $this->hiddenFields));
-
         foreach ($fields as $field) {
             $node = $this->parseToMultiTree($this->find($field));
             if (is_array($node)) {
@@ -354,7 +339,7 @@ class ComplexSearch
     {
         $value = $this->input('groupBy', $default);
         if ($value && is_string($value)) {
-            $value = $this->makRaw($this->find($value), false);
+            $value = [$this->field($value)];
         }
         return $value;
     }
@@ -366,21 +351,17 @@ class ComplexSearch
         return $this;
     }
 
-    private function setGroupBy($model)
+    /**
+     * @param $node RelationNode
+     */
+    private function setGroupBy($node)
     {
-        if (!$model->path) return;
-        $paths = explode('.', $model->path);
+        if (!count($this->groupDef)) return;
         $groups = array();
-        while (count($paths)) {
-            $path = array_pop($paths);
-            foreach ($this->groupDef as $key => $value) {
-                if ($key === $path) {
-                    array_unshift($groups, $this->field($value));
-                } else if (is_int($key) && $value === $path) {
-                    array_unshift($groups, $model->join[0][2]);
-                }
+        foreach ($this->groupDef as $name => $value) {
+            if (in_array(is_int($name) ? $value : $name, $node->path())) {
+                array_unshift($groups, is_int($name) ? $node->getQualifiedOtherKeyName() : $this->field($value));
             }
-            $model = $model->parentNode;
         }
         $this->groupBy = array_unique(array_merge($this->groupBy, $groups));
     }
@@ -407,35 +388,25 @@ class ComplexSearch
         return $this;
     }
 
-    public function getJoins()
-    {
-        return $this->joins;
-    }
-
     protected function addJoins()
     {
-        foreach ($this->joins as $join) {
-            if (isset($this->join[$join[0]])) {
-                $this->join[$join[0]]($this->query);
+        foreach ($this->joins as $name => $join) {
+            if (isset($this->joinDef[$name])) {
+                $this->joinDef[$name]($this->query);
             } else {
                 $this->query->leftJoin($join[0], $join[1], '=', $join[2]);
             }
         }
     }
 
-    private function bindCondition($field, $condition)
+    private function bindCondition()
     {
-        $relations = [$this->relations];
+        foreach ($this->conditions as $key => $condition) {
+            if (isset($condition['custom'])) continue;
 
-        while (count($relations)) {
-            $relation = array_shift($relations);
-            if ($relation->name === $field['table']) {
-                $relation->fields[$field['name']] = array_merge($relation->fields[$field['name']], $condition);
-                return;
-            }
-            if (count($relation->childNodes)) {
-                $relations = array_merge($relations, array_values($relation->childNodes));
-            }
+            $field = $this->find($key);
+
+            $field['node']->fields[$field['name']] = array_merge($field['node']->fields[$field['name']], $condition);
         }
     }
 
@@ -480,10 +451,43 @@ class ComplexSearch
 
     private function makRaw($field, $rename = true)
     {
-        if ($rename && $field['_value'] !== '*' && $field['_value'] !== $field['rename']) {
+        if ($rename && $field['rename'] && $field['_value'] !== '*' && $field['_value'] !== $field['rename']) {
             return \DB::raw($field['table'] . '.' . $field['_value'] . ' as ' . $field['rename']);
         }
         return $field['table'] . '.' . $field['_value'];
+    }
+
+    function parseField($str)
+    {
+        $argv = explode('|', $str);
+
+        $path = explode('.', $argv[0]);
+
+        $field['name'] = array_pop($path);
+
+        $field['path'] = $path;
+
+        $field['rename'] = isset($argv[1]) ? $argv[1] : $field['name'];
+
+        return $field;
+    }
+
+    /**
+     * @param $field
+     * @param $node RelationNode
+     * @param $mach RelationNode
+     * @param $type int
+     * @return bool
+     */
+    function machField($field, $node, &$mach = null, $type = 0)
+    {
+        if (!$node->inPath($field['path'])) return false;
+
+        if ($type !== 1 && ($mach = $node->inJoinField($field['name']))) {
+            return true;
+        }
+
+        return $field['name'] === '*' || $node->inField($field['name']);
     }
 
     /*********************************************************/
@@ -599,104 +603,11 @@ class ComplexSearch
 
     private function setJoins($joins)
     {
-        for ($i = 0; $i < count($joins); $i++) {
-            for ($j = count($joins) - 1; $j > $i; $j--) {
-                if ($joins[$i][1] === $joins[$j][2]) {
-                    array_splice($joins, $i, $j - $i + 1, [
-                        [$joins[$j][0], $joins[$j][1], $joins[$i][2]]
-                    ]);
-                }
-            }
-            $index = count($this->joins);
-            foreach ($this->joins as $k => $join) {
-                if ($join[0] === $joins[$i][0]) {
-                    $index = $k;
-                }
-            }
-            $this->joins[$index] = $joins[$i];
+        foreach ($joins as $name => $join) {
+            if (isset($this->joins[$name])) continue;
+
+            $this->joins[$name] = $join;
         }
-    }
-
-    /**
-     * @param $field
-     * @param $relation RelationNode
-     * @return mixed
-     */
-    private function findByRelations($field, $relation)
-    {
-
-        $argv = explode('.', $field);
-        $joins = $relation->join;
-        $value = array_pop($argv);
-
-        foreach ($argv as $join) {
-            if (!isset($relation->childNodes[$join])) {
-                throw new \Exception(" \"{$field}\" relation \"{$join}\" not exist");
-            }
-            $relation = $relation->childNodes[$join];
-            $joins = array_merge($joins, $relation->join);
-        }
-
-        if ($argv = $this->findInJoins($value, $joins, $relation)) {
-            $this->setJoins($joins);
-            return ['model' => $relation, 'field' => $argv[1], 'table' => $argv[0]];
-        }
-
-        if (isset($relation->fields[$value])) {
-            $this->setJoins($joins);
-            if ($value === '*') {
-                return $this->addKey($this->makeField($field, null, '*'), 'table', $relation->name);
-            }
-            return ['model' => $relation, 'field' => $value];
-        } else {
-            throw new \Exception("field \"{$field}\" value \"{$value}\" not exist");
-        }
-    }
-
-    /**
-     * @param $field
-     * @param $relation RelationNode
-     * @return mixed|null
-     */
-    private function findInRelations($field, $relation)
-    {
-        $relations = [[$relation, []]];
-        while (count($relations)) {
-            $children = array();
-            foreach ($relations as $item) {
-                $joins = array_merge($item[1], $item[0]->join);
-
-                if ($argv = $this->findInJoins($field, $joins, $item[0])) {
-                    $this->setJoins($item[1]);
-                    return ['model' => $item[0], 'field' => $argv[1], 'table' => $argv[0]];
-                }
-                if (isset($item[0]->fields[$field])) {
-                    $this->setJoins($joins);
-                    return ['model' => $item[0], 'field' => $field];
-                }
-
-                foreach ($item[0]->childNodes as $value) {
-                    array_push($children, [$value, $joins]);
-                }
-            }
-            $relations = $children;
-        }
-        return null;
-    }
-
-    private function findInJoins($field, &$joins, &$relation)
-    {
-        foreach ($relation->join as $item) {
-            if (explode('.', $item[1])[1] === $field) {
-                $argv = explode('.', $item[2]);
-
-                array_pop($joins);
-                $relation = $relation->parentNode;
-
-                return $this->findInJoins($argv[1], $joins, $relation) ?: $argv;
-            }
-        }
-        return null;
     }
 
     private function addKey($array, $key, $value)
@@ -705,30 +616,47 @@ class ComplexSearch
         return $array;
     }
 
-    private function makeRelations($model, $range)
+    public function makeRelation($model, $range)
     {
+        $models = [[[$model, null, &$this->relations]]];
         $tables = array();
-        $models = ['' => [$model, [], &$this->relations]];
         while (count($models)) {
-            $children = array();
-            foreach ($models as $key => $value) {
-                $table = $value[0]->getTable();
-                if (in_array($table, $tables)) continue;
+            $items = array_shift($models);
+            $children = [];
+            foreach ($items as $model) {
+                if (in_array($model[0]->getTable(), $tables)) continue;
 
-                $node = new RelationNode($value[0], $value[1]);
-                $node->fields = $this->getFieldsByModel($value[0], $node->path, $node->foreignKey);
+                $parent = $this->makeNode($model[0], $model[1]);
+                $tables[] = $parent->table;
+                $model[2] ? $model[2]->addChild($parent) : $model[2] = $parent;
 
-                $value[2] ? $value[2]->addChild($key, $node) : $value[2] = $node;
-                foreach ($this->getJoinsByModel($value[0]) as $k => $join) {
-                    $children[$k] = [end($join)[0], $join, $node];
+                foreach ($this->getJoinsByModel($model[0]) as $name => $joins) {
+                    foreach ($joins as $key => $join) {
+                        if ($key < count($joins) - 1) {
+                            if (in_array($join[0]->getTable(), $tables)) continue;
+                            $node = $this->makeNode($join[0], [$join[2], $join[1], $join[0]->getTable()]);
+                            $node->appendTo($parent);
+                            $parent = $node;
+                            $tables[] = $parent->table;
+                        } else {
+                            $children[] = [$join[0], [$join[2], $join[1], $name], $parent];
+                        }
+                    }
                 }
-                array_push($tables, $table);
             }
-            if (--$range < 0) {
-                break;
-            }
-            $models = $children;
+            if (--$range >= 0) $models[] = $children;
         }
+    }
+
+    private function makeNode($model, $join)
+    {
+        $node = new RelationNode($model);
+
+        $this->setFields($model, $node);
+
+        if ($join) $node->setJoin(...$join);
+
+        return $node;
     }
 
     /**
@@ -768,6 +696,37 @@ class ComplexSearch
             }
         }
         return $fields;
+    }
+
+    /**
+     * @param $model \Illuminate\Database\Eloquent\Model;
+     * @param $node RelationNode
+     * @return array
+     */
+    private function setFields($model, $node)
+    {
+        $fills = $model->getFillable();
+        $primaryKey = $model->getKeyName();
+
+        if (!in_array($primaryKey, $fills)) $fills[] = $primaryKey;
+        $casts[$primaryKey] = 'only';
+        if ($model->timestamps) {
+            $casts['created_at'] = $casts['updated_at'] = 'date';
+            if (!in_array('created_at', $fills)) $fills[] = 'created_at';
+            if (!in_array('updated_at', $fills)) $fills[] = 'updated_at';
+        }
+        $casts = array_merge($casts, $model->getCasts(), $model->fieldTypes ?: []);
+
+        foreach ($fills as $field) {
+            $node->fields[$field] = $this->makeField($field, isset($casts[$field]) ? $casts[$field] : 'numeric', $field);
+        }
+
+        foreach ($this->customFields as $key => $value) {
+            $field = $this->parseField($key);
+            if ($node->inPath($field['path'])) {
+                $node->fields[$field['name']] = $this->makeField($field['name'], 'numeric', $value, true);
+            }
+        }
     }
 
     private function makeField($name, $type, $value, $custom = false)
