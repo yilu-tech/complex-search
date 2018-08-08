@@ -289,8 +289,8 @@ class ComplexSearch
     {
         foreach ($conditions as $condition) {
             if (isset($condition['fun'])) {
-                if (isset($this->whereDef[$condition['argv'][0]])) {
-                    $this->whereDef[$condition['argv'][0]]($query, $condition);
+                if (isset($this->whereDef[$condition['name']])) {
+                    $this->whereDef[$condition['name']]($query, $condition);
                     continue;
                 }
                 $query->{$condition['fun']}(...$condition['argv']);
@@ -418,7 +418,8 @@ class ComplexSearch
      */
     private function formatWhere($params, $boolean = 'and')
     {
-        $field = $this->find($params[0]);
+        $name = $params[0];
+        $field = $this->find($name);
         if (!in_array($params[1], $this->sqlOperators[$field['itype']], true)) {
             throw new \Exception("where \"{$params[0]}\" operator \"{$params[1]}\" not exist");
         }
@@ -446,6 +447,7 @@ class ComplexSearch
         } else {
             $where = ['fun' => 'where', 'argv' => [$params[0], $params[1], $params[2], $boolean]];
         }
+        $where['name'] = $name;
         return $where;
     }
 
