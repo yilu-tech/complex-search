@@ -717,6 +717,11 @@ class ComplexSearch
             if (!in_array('created_at', $fills)) $fills[] = 'created_at';
             if (!in_array('updated_at', $fills)) $fills[] = 'updated_at';
         }
+        
+        if (in_array('Illuminate\Database\Eloquent\SoftDeletes', class_uses($model))) {
+            $casts['deleted_at'] = 'date';
+            if (!in_array('deleted_at', $fills)) $fills[] = 'deleted_at';
+        }
         $casts = array_merge($casts, $model->getCasts(), $model->fieldTypes ?: []);
 
         foreach ($fills as $field) {
