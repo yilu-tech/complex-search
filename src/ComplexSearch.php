@@ -434,20 +434,19 @@ class ComplexSearch
         $params[0] = $field['custom'] ? $field['rename'] : $this->makRaw($field, false);
 
         if ($params[1] === '=' && $params[2] === null) {
-            $where = ['fun' => 'whereNull', 'argv' => [$params[0], $boolean]];
+            $where = ['name'=> $name, 'fun' => 'whereNull', 'argv' => [$params[0], $boolean]];
         } elseif ($params[1] === '<>' && $params[2] === null) {
-            $where = ['fun' => 'whereNotNull', 'argv' => [$params[0], $boolean]];
+            $where = ['name'=> $name, 'fun' => 'whereNotNull', 'argv' => [$params[0], $boolean]];
         } elseif ($params[1] === 'in') {
             $where = [
-                ['fun' => 'where', 'argv' => [$params[0], '>=', $params[2][0]]],
-                ['fun' => 'where', 'argv' => [$params[0], '<=', $params[2][1]]]
+                ['name'=> $name, 'fun' => 'where', 'argv' => [$params[0], '>=', $params[2][0]]],
+                ['name'=> $name, 'fun' => 'where', 'argv' => [$params[0], '<=', $params[2][1]]]
             ];
         } elseif (is_array($params[2])) {
-            $where = ['fun' => $params[1] === '=' ? 'whereIn' : 'whereNotIn', 'argv' => [$params[0], $params[2], $boolean]];
+            $where = ['name'=> $name, 'fun' => $params[1] === '=' ? 'whereIn' : 'whereNotIn', 'argv' => [$params[0], $params[2], $boolean]];
         } else {
-            $where = ['fun' => 'where', 'argv' => [$params[0], $params[1], $params[2], $boolean]];
+            $where = ['name'=> $name, 'fun' => 'where', 'argv' => [$params[0], $params[1], $params[2], $boolean]];
         }
-        $where['name'] = $name;
         return $where;
     }
 
@@ -717,7 +716,7 @@ class ComplexSearch
             if (!in_array('created_at', $fills)) $fills[] = 'created_at';
             if (!in_array('updated_at', $fills)) $fills[] = 'updated_at';
         }
-        
+
         if (in_array('Illuminate\Database\Eloquent\SoftDeletes', class_uses($model))) {
             $casts['deleted_at'] = 'date';
             if (!in_array('deleted_at', $fills)) $fills[] = 'deleted_at';
