@@ -74,20 +74,16 @@ class ComplexSearch
 
         $this->action = $this->input('action');
 
+        if (method_exists($this, 'addOptions') && $this->action === 'fields') {
+            $this->addOptions();
+        }
+
         if ($this->root) {
             if (is_string($this->root)) {
                 $this->root = new $this->root;
             }
             $this->makeRelation($this->root, $this->range);
         }
-
-        if ($this->action !== 'fields') return;
-
-        if (method_exists($this, 'addOptions')) {
-            $this->addOptions();
-        }
-
-        if (!$this->root) return;
 
         $this->bindCondition();
     }
