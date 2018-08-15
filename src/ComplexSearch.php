@@ -263,7 +263,7 @@ class ComplexSearch
             } else {
                 if ($code >= 0 && $condition[0] === $field) $bool[0] = 1;
             }
-            if (($bool[0] * $code > 0) || ($bool[1] ^ $code > 0) || ($bool[0] && $bool[1])) return true;
+            if (($bool[0] * $code > 0) || ($bool[1] * $code > 0) || ($bool[0] && $bool[1])) return true;
         }
         return false;
     }
