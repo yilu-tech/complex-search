@@ -74,16 +74,20 @@ class ComplexSearch
 
         $this->action = $this->input('action');
 
-        if (method_exists($this, 'addOptions') && $this->action === 'fields') {
-            $this->addOptions();
-        }
-
         if ($this->root) {
             if (is_string($this->root)) {
                 $this->root = new $this->root;
             }
             $this->makeRelation($this->root, $this->range);
         }
+
+        if ($this->action !== 'fields') return;
+
+        if (method_exists($this, 'addOptions')) {
+            $this->addOptions();
+        }
+
+        if (!$this->root) return;
 
         $this->bindCondition();
     }
@@ -420,6 +424,14 @@ class ComplexSearch
             throw new \Exception("where \"{$params[0]}\" operator \"{$params[1]}\" not exist");
         }
 
+        if (is_array($params[2]) && (strlen($params[2][0]) > 32 || strlen($params[2][1]) > 32)) {
+            throw new \Exception("\"{$name}\" value length more than 32");
+        }
+
+        if ((is_string($params[2]) || is_numeric($params[2])) && strlen($params[2]) > 32) {
+            throw new \Exception("\"{$name}\" value length more than 32");
+        }
+
         if ($params[1] === 'like' || $params[1] === 'not like') {
             if ($params[2] === null) {
                 $params[1] = $params[1] === 'like' ? '=' : '<>';
@@ -430,18 +442,18 @@ class ComplexSearch
         $params[0] = $field['custom'] ? $field['rename'] : $this->makRaw($field, false);
 
         if ($params[1] === '=' && $params[2] === null) {
-            $where = ['name'=> $name, 'fun' => 'whereNull', 'argv' => [$params[0], $boolean]];
+            $where = ['name' => $name, 'fun' => 'whereNull', 'argv' => [$params[0], $boolean]];
         } elseif ($params[1] === '<>' && $params[2] === null) {
-            $where = ['name'=> $name, 'fun' => 'whereNotNull', 'argv' => [$params[0], $boolean]];
+            $where = ['name' => $name, 'fun' => 'whereNotNull', 'argv' => [$params[0], $boolean]];
         } elseif ($params[1] === 'in') {
             $where = [
-                ['name'=> $name, 'fun' => 'where', 'argv' => [$params[0], '>=', $params[2][0]]],
-                ['name'=> $name, 'fun' => 'where', 'argv' => [$params[0], '<=', $params[2][1]]]
+                ['name' => $name, 'fun' => 'where', 'argv' => [$params[0], '>=', $params[2][0]]],
+                ['name' => $name, 'fun' => 'where', 'argv' => [$params[0], '<=', $params[2][1]]]
             ];
         } elseif (is_array($params[2])) {
-            $where = ['name'=> $name, 'fun' => $params[1] === '=' ? 'whereIn' : 'whereNotIn', 'argv' => [$params[0], $params[2], $boolean]];
+            $where = ['name' => $name, 'fun' => $params[1] === '=' ? 'whereIn' : 'whereNotIn', 'argv' => [$params[0], $params[2], $boolean]];
         } else {
-            $where = ['name'=> $name, 'fun' => 'where', 'argv' => [$params[0], $params[1], $params[2], $boolean]];
+            $where = ['name' => $name, 'fun' => 'where', 'argv' => [$params[0], $params[1], $params[2], $boolean]];
         }
         return $where;
     }
