@@ -273,16 +273,14 @@ class ComplexSearch
         $conditions = $this->input('params', []);
 
         foreach ($conditions as &$condition) {
-
-            if (isset($this->conditions[$condition[0]]) && !empty($this->conditions[$condition[0]]->custom)) {
-                continue;
-            }
-
             if (is_array($condition[0])) {
                 foreach ($condition as $key => &$item) {
                     $item = $this->formatWhere($item, $key ? 'or' : 'and');
                 }
             } else {
+                if (isset($this->conditions[$condition[0]]) && !empty($this->conditions[$condition[0]]['custom'])) {
+                    continue;
+                }
                 $condition = $this->formatWhere($condition);
             }
         }
