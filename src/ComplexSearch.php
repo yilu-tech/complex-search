@@ -273,6 +273,11 @@ class ComplexSearch
         $conditions = $this->input('params', []);
 
         foreach ($conditions as &$condition) {
+
+            if (isset($this->conditions[$condition[0]]) && !empty($this->conditions[$condition[0]])) {
+                continue;
+            }
+
             if (is_array($condition[0])) {
                 foreach ($condition as $key => &$item) {
                     $item = $this->formatWhere($item, $key ? 'or' : 'and');
@@ -289,15 +294,17 @@ class ComplexSearch
     {
         foreach ($conditions as $condition) {
             if (isset($condition['fun'])) {
-                if (isset($this->whereDef[$condition['name']])) {
-                    $this->whereDef[$condition['name']]($query, $condition);
-                    continue;
-                }
                 $query->{$condition['fun']}(...$condition['argv']);
-            } else {
+            } elseif (is_array($condition[0])) {
                 $query->where(function ($query) use ($condition) {
                     $this->addWhere($query, $condition);
                 });
+            } else {
+                if (isset($this->whereDef[$condition[0]])) {
+                    $this->whereDef[$condition[0]]($query, $condition);
+                } else {
+                    $query->where(...$condition['argv']);
+                }
             }
         }
         return $this;
