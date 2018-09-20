@@ -274,7 +274,7 @@ class ComplexSearch
 
         foreach ($conditions as &$condition) {
 
-            if (isset($this->conditions[$condition[0]]) && !empty($this->conditions[$condition[0]])) {
+            if (isset($this->conditions[$condition[0]]) && !empty($this->conditions[$condition[0]]->custom)) {
                 continue;
             }
 
@@ -303,7 +303,7 @@ class ComplexSearch
                 if (isset($this->whereDef[$condition[0]])) {
                     $this->whereDef[$condition[0]]($query, $condition);
                 } else {
-                    $query->where(...$condition['argv']);
+                    $query->where(...$condition);
                 }
             }
         }
@@ -431,12 +431,8 @@ class ComplexSearch
             throw new \Exception("where \"{$params[0]}\" operator \"{$params[1]}\" not exist");
         }
 
-        if (is_array($params[2]) && (strlen($params[2][0]) > 32 || strlen($params[2][1]) > 32)) {
-            throw new \Exception("\"{$name}\" value length more than 32");
-        }
-
-        if ((is_string($params[2]) || is_numeric($params[2])) && strlen($params[2]) > 32) {
-            throw new \Exception("\"{$name}\" value length more than 32");
+        if (is_string($params[2]) && strlen($params[2]) > 64) {
+            throw new \Exception("\"{$name}\" value length more than 64");
         }
 
         if ($params[1] === 'like' || $params[1] === 'not like') {
