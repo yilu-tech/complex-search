@@ -292,7 +292,11 @@ class ComplexSearch
     {
         foreach ($conditions as $condition) {
             if (isset($condition['fun'])) {
-                $query->{$condition['fun']}(...$condition['argv']);
+                if (isset($this->whereDef[$condition['name']])) {
+                    $this->whereDef[$condition['name']]($query, $condition);
+                } else {
+                    $query->{$condition['fun']}(...$condition['argv']);
+                }
             } elseif (is_array($condition[0])) {
                 $query->where(function ($query) use ($condition) {
                     $this->addWhere($query, $condition);
