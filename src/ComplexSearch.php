@@ -116,6 +116,19 @@ class ComplexSearch
             $this->addJoins();
 
             return $this->input('size') ? $this->query->paginate($this->input('size')) : $this->query->get();
+
+        } elseif ($this->action === 'export') {
+            $data['params'] = $this->input('params', []);
+            $data['fields'] = $this->input('fields', []);
+            $data['extras'] = $this->input('extras', []);
+            $data['controller'] = \Route::current()->getAction()['controller'];
+            if ($this->input('groupBy')) {
+                $data['groupBy'] = $this->input('groupBy');
+            }
+            if ($this->input('orderBy')) {
+                $data['orderBy'] = $this->input('orderBy');
+            }
+            return urlencode(encrypt(json_encode($data)));
         }
 
         return null;
