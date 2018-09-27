@@ -219,7 +219,13 @@ class ComplexSearch
 
     public function field($field, $type = 0)
     {
-        return $this->makRaw($this->find($field, $type), false);
+        $field = $this->find($field, $type);
+
+        if ($field['custom']) {
+            $field['_value'] = $this->parseToMultiTree($field)->toString();
+        }
+
+        return $this->makRaw($field, false);
     }
 
     public function find($str, $type = 0)
@@ -246,8 +252,7 @@ class ComplexSearch
             throw new \Exception("field \"$str\" not exist");
         }
         $field = array_merge($field, $field['node']->fields[$field['name']]);
-        $this->setJoins($field['node']->joins());
-        $this->setGroupBy($field['node']);
+        $this->setJoins($field['node']->joins())->setGroupBy($field['node']);
         return $field;
     }
 
@@ -328,6 +333,9 @@ class ComplexSearch
     public function getQueryFields()
     {
         $fields = $this->input('fields', []);
+        if ($orderBy = $this->getOrderBy()) {
+            $fields[] = $orderBy['field'];
+        }
         $fields = array_unique(array_merge($fields, $this->hiddenFields));
         foreach ($fields as $field) {
             $node = $this->parseToMultiTree($this->find($field));
@@ -386,6 +394,7 @@ class ComplexSearch
             }
         }
         $this->groupBy = array_unique(array_merge($this->groupBy, $groups));
+        return $this;
     }
 
     public function getOrderBy($default = null)
@@ -398,7 +407,7 @@ class ComplexSearch
         $argv = explode(' ', $value);
 
         return [
-            'field' => $this->field($argv[0]),
+            'field' => $argv[0],
             'direction' => isset($argv[1]) ? $argv[1] : 'asc'
         ];
     }
@@ -478,10 +487,15 @@ class ComplexSearch
 
     private function makRaw($field, $rename = true)
     {
-        if ($rename && $field['rename'] && $field['_value'] !== '*' && $field['_value'] !== $field['rename']) {
-            return \DB::raw($field['table'] . '.' . $field['_value'] . ' as ' . $field['rename']);
+        if (!$field['custom']) {
+            $field['_value'] = $field['table'] . '.' . $field['_value'];
         }
-        return $field['table'] . '.' . $field['_value'];
+
+        if ($rename && $field['_value'] !== '*' && $field['_value'] !== $field['rename']) {
+            return \DB::raw($field['_value'] . ' as ' . $field['rename']);
+        }
+
+        return $field['_value'];
     }
 
     function parseField($str)
@@ -528,7 +542,7 @@ class ComplexSearch
      */
     private function parseToMultiTree($filed, $root = null, $renames = [])
     {
-        if (!preg_match('/\\||:/', $filed['_value'])) {
+        if (!$filed['custom']) {
             return [$filed['rename'], $filed['table'] . '.' . $filed['_value']];
         }
         if (in_array($filed['rename'], $renames)) {
@@ -635,6 +649,7 @@ class ComplexSearch
 
             $this->joins[$name] = $join;
         }
+        return $this;
     }
 
     private function addKey($array, $key, $value)
