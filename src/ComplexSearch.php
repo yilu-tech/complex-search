@@ -276,10 +276,10 @@ class ComplexSearch
         foreach ($conditions as $condition) {
             if (is_array($condition[0])) {
                 foreach ($condition as $key => $item) {
-                    if ($code <= 0 && $item[0] === $field) $bool[1] = -1;
+                    if ($code <= 0 && strpos($item[0], $field) === strlen($item[0]) - strlen($field)) $bool[1] = -1;
                 }
             } else {
-                if ($code >= 0 && $condition[0] === $field) $bool[0] = 1;
+                if ($code >= 0 && strpos($condition[0], $field) === strlen($condition[0]) - strlen($field)) $bool[0] = 1;
             }
             if (($bool[0] * $code > 0) || ($bool[1] * $code > 0) || ($bool[0] && $bool[1])) return true;
         }
@@ -368,10 +368,13 @@ class ComplexSearch
     public function getGroupBy($default = null)
     {
         $value = $this->input('groupBy', $default);
-        if ($value && is_string($value)) {
-            $value = [$this->field($value)];
+        if (!$value) return $value;
+        if (is_string($value)) {
+            $value = [$value];
         }
-        return $value;
+        return array_map(function ($field) {
+            return $this->field($field);
+        }, $value);
     }
 
     protected function addGroupBy($query, $groups)
@@ -390,7 +393,7 @@ class ComplexSearch
         $groups = array();
         foreach ($this->groupDef as $name => $value) {
             if (in_array(is_int($name) ? $value : $name, $node->path())) {
-                array_unshift($groups, is_int($name) ? $node->getQualifiedOtherKeyName() : $this->field($value));
+                $groups[] = is_int($name) ? implode('.', array_merge($node->path(), [$node->otherKey])) : $value;
             }
         }
         $this->groupBy = array_unique(array_merge($this->groupBy, $groups));
