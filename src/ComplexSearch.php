@@ -206,9 +206,11 @@ class ComplexSearch
 
     private function validateField($field, $node)
     {
+
 //        if ($node->primaryKey === $field) {
 //            return false;
 //        }
+        $field = $node->joinName . '.' . $field;
         foreach ($this->filterPreg as $value) {
             if (preg_match("/{$value}/", $field)) {
                 return false;
