@@ -1,6 +1,6 @@
 <?php
 
-namespace Yilu\ComplexSearch;
+namespace YiluTech\ComplexSearch;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;

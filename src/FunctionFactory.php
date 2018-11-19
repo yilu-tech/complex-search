@@ -1,6 +1,6 @@
 <?php
 
-namespace Yilu\ComplexSearch;
+namespace YiluTech\ComplexSearch;
 
 class FunctionFactory
 {
