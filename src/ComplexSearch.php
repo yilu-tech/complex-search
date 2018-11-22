@@ -27,6 +27,8 @@ class ComplexSearch
      */
     protected $relations;
 
+    protected $display = 'default';
+
     protected $orderBy;
 
     protected $groupBy = array();
@@ -96,7 +98,7 @@ class ComplexSearch
     {
         if ($this->action === 'fields') {
 
-            return $this->root ? [
+            return $this->root && $this->display !== 'simple' ? [
                 'fields' => array_merge($this->getFields(), $this->getConditions(true)),
                 'headers' => $this->headers
             ] : [
