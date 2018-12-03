@@ -121,7 +121,7 @@ class RelationNode
      * @param $path array
      * @return bool
      */
-    public function inPath($path)
+    public function hasPath($path)
     {
         $curr = $this->path();
 
@@ -137,22 +137,22 @@ class RelationNode
 
     /**
      * @param $field string
-     * @return RelationNode|null
+     * @return RelationNode | bool
      */
-    public function inJoinField($field)
+    public function hasJoinField($field)
     {
-        if ($this->localKey !== $field) return null;
+        if ($this->localKey !== $field) {
+            return false;
+        }
 
-        $node = $this->parentNode->inJoinField($field);
-
-        return $node ?: $this;
+        return $this->parentNode->hasField($this->otherKey) ?: $this;
     }
 
     /**
      * @param $field string
      * @return bool
      */
-    public function inField($field)
+    public function hasField($field)
     {
         return array_key_exists($field, $this->fields);
     }
