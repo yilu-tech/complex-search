@@ -158,7 +158,7 @@ class ComplexSearch
             $this->addSelect($this->query, $this->getQueryFields());
         }
 
-        $this->addWhere($this->query);
+        $this->addWheres($this->query);
 
         if ($orderBy = $this->getOrderBy()) {
             $this->addOrderBy($this->query, $orderBy);
@@ -336,27 +336,39 @@ class ComplexSearch
         return $default;
     }
 
-    public function addWhere($query, $conditions = null, $bool = 'and')
+    public function addWheres($query, $conditions = null, $bool = 'and')
     {
         if (!$conditions) {
             $conditions = $this->input('params', []);
         }
-
         foreach ($conditions as $index => $condition) {
             if (is_array($condition[0])) {
-                $query->where(function ($query) use ($condition) {
-                    $this->addWhere($query, $condition, 'or');
+                $query->{$bool === 'or' ? 'orWhere' : 'where'}(function ($query) use ($condition) {
+                    $this->addWheres($query, $condition, 'or');
                 });
             } else {
                 $condition = $this->formatWhere($condition, ($index && $bool === 'or') ? 'or' : 'and');
-                if (isset($this->whereDef[$condition['name']])) {
-                    $this->whereDef[$condition['name']]($query, $condition);
+
+                if (isset($condition['name'])) {
+                    $this->addWhere($query, $condition);
                 } else {
-                    $query->{$condition['fun']}(...$condition['argv']);
+                    $query->{$bool === 'or' ? 'orWhere' : 'where'}(function ($query) use ($condition) {
+                        $this->addWhere($query, $condition[0]);
+                        $this->addWhere($query, $condition[1]);
+                    });
                 }
             }
         }
         return $query;
+    }
+
+    private function addWhere($query, $condition)
+    {
+        if (isset($this->whereDef[$condition['name']])) {
+            $this->whereDef[$condition['name']]($query, $condition);
+        } else {
+            $query->{$condition['fun']}(...$condition['argv']);
+        }
     }
 
     public function getQueryFields()

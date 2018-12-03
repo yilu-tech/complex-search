@@ -2,7 +2,7 @@
 
 action 变化
 ===
-action "** fields **" 关键字改为 "** prepare **"
+action "**fields**" 关键字改为 "**prepare**"
 
 执行规则 ==**exec + 首字母大写的action关键字**==
 
@@ -38,7 +38,7 @@ action "** fields **" 关键字改为 "** prepare **"
 
 - `$header[$name]['cascade']` `bool`型，是否使用级联选择
 
-- `addWhere($query, $conditions = null, $bool = 'and')` 添加条件组 `$conditions = null` 默认区查询条件
+- `addWheres($query, $conditions = null, $bool = 'and')` 添加条件组 `$conditions = null` 默认区查询条件
 
 移除方法，属性及定义
 ---
