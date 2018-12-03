@@ -22,20 +22,21 @@ class ComplexSearch
 
     protected $lang = 'fields';
 
-    /**
-     * @var RelationNode
-     */
-    protected $relations;
-
     protected $display = 'default';
+
+    protected $joins = array();
+
+    protected $hidden = array();
 
     protected $orderBy;
 
     protected $groupBy = array();
 
-    protected $whereDef = array();
-
     protected $joinDef = array();
+
+    protected $fieldDef = array();
+
+    protected $whereDef = array();
 
     protected $groupDef = array();
 
@@ -43,17 +44,14 @@ class ComplexSearch
 
     protected $conditions = array();
 
-    protected $customJoins = array();
-
-    protected $hiddenFields = array();
-
-    protected $customFields = array();
-
     protected $filterPreg = array();
 
-    private $fields = array();
+    /**
+     * @var RelationNode
+     */
+    private $relations;
 
-    private $joins = array();
+    private $joinsRelation = array();
 
     private $loop = array();
 
@@ -83,83 +81,149 @@ class ComplexSearch
             $this->makeRelation($this->root, $this->range);
         }
 
-        if ($this->action !== 'fields') return;
-
-        if (method_exists($this, 'addOptions')) {
-            $this->addOptions();
+        if ($this->action !== 'prepare') {
+            return $this;
         }
 
-        if (!$this->root) return;
+        $this->prepare();
 
-        $this->bindCondition();
+        if ($this->root) {
+            $this->bindCondition();
+        }
+
+        return $this;
+    }
+
+    public function prepare()
+    {
+        // do
     }
 
     public function get()
     {
-        if ($this->action === 'fields') {
+        if (!$this->action) return null;
 
-            return $this->root && $this->display !== 'simple' ? [
-                'fields' => array_merge($this->getFields(), $this->getConditions(true)),
-                'headers' => $this->headers
-            ] : [
-                'conditions' => $this->getConditions(),
-                'headers' => $this->headers
-            ];
+        return $this->{'exec' . ucfirst($this->action)}();
+    }
 
-        } elseif ($this->action === 'query') {
+    protected function execPrepare()
+    {
+        return $this->root && $this->display !== 'simple' ? [
+            'fields' => array_merge($this->getFields($this->relations), $this->getConditions(true)),
+            'headers' => $this->headers
+        ] : [
+            'conditions' => $this->getConditions(),
+            'headers' => $this->headers
+        ];
+    }
 
-            if (!$this->query) {
+    protected function execQuery()
+    {
+        if (!$this->query) {
+            $this->query = $this->query();
+        }
+        $this->addJoins();
+        return $this->input('size') ? $this->query->paginate($this->input('size')) : $this->query->get();
+    }
 
-//                if (!$this->root) return [];
+    protected function execExport()
+    {
+        $data['params'] = $this->input('params', []);
+        $data['fields'] = $this->input('fields', []);
+        $data['extras'] = $this->input('extras', []);
+        $data['controller'] = \Route::current()->getAction()['controller'];
 
-                $this->query = $this->query();
-            }
-
-            $this->addJoins();
-
-            return $this->input('size') ? $this->query->paginate($this->input('size')) : $this->query->get();
-
-        } elseif ($this->action === 'export') {
-            $data['params'] = $this->input('params', []);
-            $data['fields'] = $this->input('fields', []);
-            $data['extras'] = $this->input('extras', []);
-            $data['controller'] = \Route::current()->getAction()['controller'];
-            if ($this->input('groupBy')) {
-                $data['groupBy'] = $this->input('groupBy');
-            }
-            if ($this->input('orderBy')) {
-                $data['orderBy'] = $this->input('orderBy');
-            }
-            return urlencode(encrypt(json_encode($data)));
+        if ($groupBy = $this->input('groupBy')) {
+            $data['groupBy'] = $groupBy;
         }
 
-        return null;
+        if ($orderBy = $this->input('orderBy')) {
+            $data['orderBy'] = $orderBy;
+        }
+
+        return urlencode(encrypt(json_encode($data)));
     }
 
     public function query()
     {
-        $this->query = $this->root->query();
-
-        if ($this->action === 'query') {
-            if (!count($this->input('fields', []))) {
-                throw new \Exception('query fields null');
-            }
-
-            $this->addSelect($this->query, $this->getQueryFields());
-
-            $this->addWhere($this->query, $this->getQueryConditions());
-
-            $orderBy = $this->getOrderBy();
-            if ($orderBy) {
-                $this->addOrderBy($this->query, $orderBy);
-            }
-
-            $groupBy = $this->getGroupBy();
-            if ($groupBy) {
-                $this->addGroupBy($this->query, $groupBy);
-            }
+        if (!$this->query) {
+            $this->query = $this->root->query();
         }
+
+        if (!count($this->input('fields', []))) {
+            throw new \Exception('query fields null');
+        }
+
+        if ($this->root) {
+            $this->addSelect($this->query, $this->getQueryFields());
+        }
+
+        $this->addWhere($this->query);
+
+        if ($orderBy = $this->getOrderBy()) {
+            $this->addOrderBy($this->query, $orderBy);
+        }
+
+        if ($groupBy = $this->getGroupBy()) {
+            $this->addGroupBy($this->query, $groupBy);
+        }
+
         return $this->query;
+    }
+
+    public function where($column, $operator = null, $value = null)
+    {
+        if (!$this->query) return $this;
+
+        if ($this->root) {
+            $column = $this->field($column);
+        }
+
+        $this->query->where($column, $operator, $value);
+
+        return $this;
+    }
+
+    public function getQueryCondition($name, $matchOr = false)
+    {
+        foreach ($this->input('params', []) as $item) {
+
+            if ($matchOr && is_array($item[0])) {
+                foreach ($item as $subItem) {
+                    if ($this->matchField($name, $subItem[0])) return $item;
+                }
+            }
+
+            if ($this->matchField($name, $item[0])) return $item;
+        }
+        return null;
+    }
+
+    /**
+     * @param $name
+     * @param int $type 0 任意匹配 1 单条件单元匹配 2 多条件单元匹配
+     * @return bool
+     */
+    public function hasQueryCondition($name, $type = 0)
+    {
+        $multiple = false;
+        $single = false;
+        foreach ($this->input('params', []) as $condition) {
+            if (is_array($condition[0])) {
+                if ($type !== 1 && !$multiple) {
+                    foreach ($condition as $key => $item) {
+                        if ($this->matchField($name, $item[0])) $multiple = true;
+                    }
+                }
+            } elseif ($this->matchField($name, $condition[0])) {
+                $single = true;
+            }
+
+            if ($type === 1 && $single) return true;
+            if ($type === 2 && $multiple) return true;
+            if ($type === 0 && ($multiple || $single)) return true;
+        }
+        return false;
     }
 
     public function getConditions($custom = false)
@@ -182,9 +246,8 @@ class ComplexSearch
      * @param $node RelationNode
      * @return array
      */
-    public function getFields($node = null)
+    public function getFields($node)
     {
-        $node = $node ?: $this->relations;
         $fields = array();
         foreach ($node->fields as $key => $value) {
             if ($this->validateField($value['name'], $node)) {
@@ -238,11 +301,11 @@ class ComplexSearch
         $nodes = [$this->relations];
         while (count($nodes)) {
             $node = array_shift($nodes);
-            if ($this->machField($field, $node, $mach, $type)) {
-                if ($mach) {
-                    $field['table'] = $mach->parentNode->table;
-                    $field['name'] = $mach->otherKey;
-                    $field['node'] = $mach->parentNode;
+            if ($this->hasField($field, $node, $match, $type)) {
+                if ($match) {
+                    $field['table'] = $match->parentNode->table;
+                    $field['name'] = $match->otherKey;
+                    $field['node'] = $match->parentNode;
                     if (!$field['rename']) $field['rename'] = $field['name'];
                 } else {
                     $field['table'] = $node->table;
@@ -273,65 +336,27 @@ class ComplexSearch
         return $default;
     }
 
-    public function hasCondition($field, $code = 0)
+    public function addWhere($query, $conditions = null, $bool = 'and')
     {
-        $conditions = $this->input('params', []);
-        $bool = [0, 0];
-        foreach ($conditions as $condition) {
-            if (is_array($condition[0])) {
-                foreach ($condition as $key => $item) {
-                    if ($code <= 0 && strpos($item[0], $field) === strlen($item[0]) - strlen($field)) $bool[1] = -1;
-                }
-            } else {
-                if ($code >= 0 && strpos($condition[0], $field) === strlen($condition[0]) - strlen($field)) $bool[0] = 1;
-            }
-            if (($bool[0] * $code > 0) || ($bool[1] * $code > 0) || ($bool[0] && $bool[1])) return true;
-        }
-        return false;
-    }
-
-    public function getQueryConditions()
-    {
-        $conditions = $this->input('params', []);
-
-        foreach ($conditions as &$condition) {
-            if (is_array($condition[0])) {
-                foreach ($condition as $key => &$item) {
-                    $item = $this->formatWhere($item, $key ? 'or' : 'and');
-                }
-            } else {
-                if (isset($this->conditions[$condition[0]]) && !empty($this->conditions[$condition[0]]['custom'])) {
-                    continue;
-                }
-                $condition = $this->formatWhere($condition);
-            }
+        if (!$conditions) {
+            $conditions = $this->input('params', []);
         }
 
-        return $conditions;
-    }
-
-    protected function addWhere($query, $conditions)
-    {
-        foreach ($conditions as $condition) {
-            if (isset($condition['fun'])) {
+        foreach ($conditions as $index => $condition) {
+            if (is_array($condition[0])) {
+                $query->where(function ($query) use ($condition) {
+                    $this->addWhere($query, $condition, 'or');
+                });
+            } else {
+                $condition = $this->formatWhere($condition, ($index && $bool === 'or') ? 'or' : 'and');
                 if (isset($this->whereDef[$condition['name']])) {
                     $this->whereDef[$condition['name']]($query, $condition);
                 } else {
                     $query->{$condition['fun']}(...$condition['argv']);
                 }
-            } elseif (is_array($condition[0])) {
-                $query->where(function ($query) use ($condition) {
-                    $this->addWhere($query, $condition);
-                });
-            } else {
-                if (isset($this->whereDef[$condition[0]])) {
-                    $this->whereDef[$condition[0]]($query, $condition);
-                } else {
-                    $query->where(...$condition);
-                }
             }
         }
-        return $this;
+        return $query;
     }
 
     public function getQueryFields()
@@ -340,7 +365,7 @@ class ComplexSearch
         if ($orderBy = $this->getOrderBy()) {
             $fields[] = $orderBy['field'];
         }
-        $fields = array_unique(array_merge($fields, $this->hiddenFields));
+        $fields = array_unique(array_merge($fields, $this->hidden));
         foreach ($fields as $field) {
             $node = $this->parseToMultiTree($this->find($field));
             if (is_array($node)) {
@@ -389,11 +414,12 @@ class ComplexSearch
     }
 
     /**
-     * @param $node RelationNode
+     * @param $node
+     * @return $this
      */
     private function setGroupBy($node)
     {
-        if (!count($this->groupDef)) return;
+        if (!count($this->groupDef)) return $this;
         $groups = array();
         foreach ($this->groupDef as $name => $value) {
             if (in_array(is_int($name) ? $value : $name, $node->path())) {
@@ -428,9 +454,9 @@ class ComplexSearch
 
     protected function addJoins()
     {
-        foreach ($this->joins as $name => $join) {
+        foreach ($this->joinsRelation as $name => $join) {
             if (isset($this->joinDef[$name])) {
-                $this->joinDef[$name]($this->query);
+                $this->query->leftJoin($join[0], $this->joinDef[$name]);
             } else {
                 $this->query->leftJoin($join[0], $join[1], '=', $join[2]);
             }
@@ -450,44 +476,48 @@ class ComplexSearch
 
     /**
      * @param $params
-     * @param string $boolean
+     * @param string $bool
      * @return array
      * @throws \Exception
      */
-    private function formatWhere($params, $boolean = 'and')
+    private function formatWhere($params, $bool = 'and')
     {
         $name = $params[0];
-        $field = $this->find($name);
-        if (!in_array($params[1], $this->sqlOperators[$field['itype']], true)) {
-            throw new \Exception("where \"{$params[0]}\" operator \"{$params[1]}\" not exist");
-        }
 
-        if (is_string($params[2]) && strlen($params[2]) > 64) {
-            throw new \Exception("\"{$name}\" value length more than 64");
+        if ($this->root && empty($this->conditions[$name]['custom'])) {
+            $field = $this->find($name);
+            if (!in_array($params[1], $this->sqlOperators[$field['itype']], true)) {
+                throw new \Exception("where \"{$params[0]}\" operator \"{$params[1]}\" not exist");
+            }
+
+            if (is_string($params[2]) && strlen($params[2]) > 64) {
+                throw new \Exception("\"{$params[0]}\" value length more than 64");
+            }
+
+            $params[0] = $field['custom'] ? $field['rename'] : $this->makRaw($field, false);
         }
 
         if ($params[1] === 'like' || $params[1] === 'not like') {
-            if ($params[2] === null) {
-                $params[1] = $params[1] === 'like' ? '=' : '<>';
-            } else {
+            if ($params[2]) {
                 $params[2] = '%' . $params[2] . '%';
+            } else {
+                $params[1] = $params[1] === 'like' ? '=' : '<>';
             }
         }
-        $params[0] = $field['custom'] ? $field['rename'] : $this->makRaw($field, false);
 
         if ($params[1] === '=' && $params[2] === null) {
-            $where = ['name' => $name, 'fun' => 'whereNull', 'argv' => [$params[0], $boolean]];
+            $where = ['name' => $name, 'fun' => 'whereNull', 'argv' => [$params[0], $bool]];
         } elseif ($params[1] === '<>' && $params[2] === null) {
-            $where = ['name' => $name, 'fun' => 'whereNotNull', 'argv' => [$params[0], $boolean]];
+            $where = ['name' => $name, 'fun' => 'whereNotNull', 'argv' => [$params[0], $bool]];
         } elseif ($params[1] === 'in') {
             $where = [
                 ['name' => $name, 'fun' => 'where', 'argv' => [$params[0], '>=', $params[2][0]]],
                 ['name' => $name, 'fun' => 'where', 'argv' => [$params[0], '<=', $params[2][1]]]
             ];
         } elseif (is_array($params[2])) {
-            $where = ['name' => $name, 'fun' => $params[1] === '=' ? 'whereIn' : 'whereNotIn', 'argv' => [$params[0], $params[2], $boolean]];
+            $where = ['name' => $name, 'fun' => $params[1] === '=' ? 'whereIn' : 'whereNotIn', 'argv' => [$params[0], $params[2], $bool]];
         } else {
-            $where = ['name' => $name, 'fun' => 'where', 'argv' => [$params[0], $params[1], $params[2], $boolean]];
+            $where = ['name' => $name, 'fun' => 'where', 'argv' => [$params[0], $params[1], $params[2], $bool]];
         }
         return $where;
     }
@@ -523,19 +553,28 @@ class ComplexSearch
     /**
      * @param $field
      * @param $node RelationNode
-     * @param $mach RelationNode
+     * @param $match RelationNode
      * @param $type int
      * @return bool
      */
-    function machField($field, $node, &$mach = null, $type = 0)
+    function hasField($field, $node, &$match = null, $type = 0)
     {
-        if (!$node->inPath($field['path'])) return false;
+        if (!$node->hasPath($field['path'])) return false;
 
-        if ($type !== 1 && ($mach = $node->inJoinField($field['name']))) {
+        if ($type !== 1 && $match = $node->hasJoinField($field['name'])) {
             return true;
         }
 
-        return $field['name'] === '*' || $node->inField($field['name']);
+        return $field['name'] === '*' || $node->hasField($field['name']);
+    }
+
+    private function matchField($name, $subject)
+    {
+        $index = strpos($subject, $name);
+        if ($index > 0 && $subject{$index - 1} !== '.') {
+            return false;
+        }
+        return (strlen($subject) - strlen($name)) === $index;
     }
 
     /*********************************************************/
@@ -556,11 +595,10 @@ class ComplexSearch
             throw new \Exception("relationship \"{$filed['rename']}\" call error");
         }
         array_push($renames, $filed['rename']);
-        $fun = explode('|', $filed['_value']);
-        $len = count($fun) - 1;
+        $parts = explode('|', $filed['_value']);
         $currentNode = $childNode = null;
-        for ($i = $len; $i >= 0; $i--) {
-            $item = explode(':', $fun[$i]);
+        for ($i = count($parts) - 1; $i >= 0; $i--) {
+            $item = explode(':', $parts[$i]);
             if (!in_array($item[0], $this->fun)) {
                 throw new \Exception(" \"{$filed['rename']}\" function \"{$item[0]}\" not exist ");
             }
@@ -593,18 +631,11 @@ class ComplexSearch
                 $value = $this->parseToMultiTree($field, $currentNode, $renames);
             } elseif ($value === '$') {
                 $value = $childNode;
-            } elseif (!is_numeric($value)) {
-                if (preg_match_all('/{.+?}/', $value, $items)) {
-                    foreach ($items[0] as $item) {
-                        $field = $this->find(substr($item, 1, -1));
-                        $field = $field['table'] . '.' . $field['_value'];
-                        $value = preg_replace('/{.+?}/', $field, $value, 1);
-                    }
-                }
-//                else {
-//                    $field = $this->find($value);
-//                    $value = $field['table'] . '.' . $field['_value'];
-//                }
+            } else {
+                $value = preg_replace_callback('/{.+?}/', function ($match) {
+                    $field = $this->find(substr($match[0], 1, -1));
+                    return $field['table'] . '.' . $field['_value'];
+                }, $value);
             }
         }
         return $params;
@@ -652,17 +683,11 @@ class ComplexSearch
     private function setJoins($joins)
     {
         foreach ($joins as $name => $join) {
-            if (isset($this->joins[$name])) continue;
+            if (isset($this->joinsRelation[$name])) continue;
 
-            $this->joins[$name] = $join;
+            $this->joinsRelation[$name] = $join;
         }
         return $this;
-    }
-
-    private function addKey($array, $key, $value)
-    {
-        $array[$key] = $value;
-        return $array;
     }
 
     public function makeRelation($model, $range)
@@ -710,45 +735,6 @@ class ComplexSearch
 
     /**
      * @param $model \Illuminate\Database\Eloquent\Model;
-     * @param $path string
-     * @param $fk string
-     * @return array
-     */
-    private function getFieldsByModel($model, $path = '', $fk = null)
-    {
-        $fills = $model->getFillable();
-        $primaryKey = $model->getKeyName();
-
-        if (!in_array($primaryKey, $fills)) $fills[] = $primaryKey;
-        $casts[$primaryKey] = 'only';
-        if ($model->timestamps) {
-            $casts['created_at'] = $casts['updated_at'] = 'date';
-            if (!in_array('created_at', $fills)) $fills[] = 'created_at';
-            if (!in_array('updated_at', $fills)) $fills[] = 'updated_at';
-        }
-        $fills = array_diff($fills, [$fk]);
-        $casts = array_merge($casts, $model->getCasts(), $model->fieldTypes ?: []);
-
-        $fields = array();
-        foreach ($fills as $field) {
-            $fields[$field] = $this->makeField($path ? "{$path}.{$field}" : $field,
-                isset($casts[$field]) ? $casts[$field] : 'numeric', $field);
-        }
-
-        foreach ($this->customFields as $key => $value) {
-            if ($path && strpos($key, $path) === 0) {
-                $args = explode('.', $key);
-                $field = end($args);
-                $fields[$field] = $this->makeField($key, 'numeric', $value, true);
-            } elseif (!$path && !strpos($key, '.')) {
-                $fields[$key] = $this->makeField($key, 'numeric', $value, true);
-            }
-        }
-        return $fields;
-    }
-
-    /**
-     * @param $model \Illuminate\Database\Eloquent\Model;
      * @param $node RelationNode
      * @return array
      */
@@ -775,9 +761,9 @@ class ComplexSearch
             $node->fields[$field] = $this->makeField($field, isset($casts[$field]) ? $casts[$field] : 'numeric', $field);
         }
 
-        foreach ($this->customFields as $key => $value) {
+        foreach ($this->fieldDef as $key => $value) {
             $field = $this->parseField($key);
-            if ($node->inPath($field['path'])) {
+            if ($node->hasPath($field['path'])) {
                 $node->fields[$field['name']] = $this->makeField($field['name'], 'numeric', $value, true);
             }
         }
@@ -800,9 +786,9 @@ class ComplexSearch
     private function getJoinsByModel($model)
     {
         $joins = $model->joins ?: [];
-        if (count($this->customJoins)) {
+        if (count($this->joins)) {
             $joins = array_filter($joins, function ($item) {
-                return in_array($item, $this->customJoins);
+                return in_array($item, $this->joins);
             });
         }
         $relations = [];
