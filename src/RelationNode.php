@@ -145,7 +145,7 @@ class RelationNode
             return false;
         }
 
-        return $this->parentNode->hasField($this->otherKey) ?: $this;
+        return $this->parentNode->hasJoinField($this->otherKey) ?: $this;
     }
 
     /**

@@ -633,7 +633,7 @@ class ComplexSearch
                 $value = $childNode;
             } else {
                 $value = preg_replace_callback('/{.+?}/', function ($match) {
-                    $field = $this->find(substr($match, 1, -1));
+                    $field = $this->find(substr($match[0], 1, -1));
                     return $field['table'] . '.' . $field['_value'];
                 }, $value);
             }
