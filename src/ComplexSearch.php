@@ -108,13 +108,16 @@ class ComplexSearch
 
     protected function execPrepare()
     {
-        return $this->root && $this->display !== 'simple' ? [
-            'fields' => array_merge($this->getFields($this->relations), $this->getConditions(true)),
-            'headers' => $this->headers
-        ] : [
-            'conditions' => $this->getConditions(),
-            'headers' => $this->headers
+        $data = [
+            'headers' => $this->headers,
+            'display' => $this->display
         ];
+        if ($this->root && $this->display !== 'simple') {
+            $data['fields'] = array_merge($this->getFields($this->relations), $this->getConditions(true));
+        } else {
+            $data['conditions'] = $this->getConditions();
+        }
+        return $data;
     }
 
     protected function execQuery()
