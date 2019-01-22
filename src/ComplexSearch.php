@@ -164,7 +164,8 @@ class ComplexSearch
         $this->addWheres($this->query);
 
         if ($orderBy = $this->getOrderBy()) {
-            $this->addOrderBy($this->query, $orderBy);
+            foreach ($orderBy as $item)
+                $this->addOrderBy($this->query, $item);
         }
 
         if ($groupBy = $this->getGroupBy()) {
@@ -377,9 +378,9 @@ class ComplexSearch
     public function getQueryFields()
     {
         $fields = $this->input('fields', []);
-        if ($orderBy = $this->getOrderBy()) {
-            $fields[] = $orderBy['field'];
-        }
+//        if ($orderBy = $this->getOrderBy()) {
+//            $fields[] = $orderBy['field'];
+//        }
         $fields = array_unique(array_merge($fields, $this->hidden));
         foreach ($fields as $field) {
             $node = $this->parseToMultiTree($this->find($field));
@@ -451,13 +452,13 @@ class ComplexSearch
         if (!$value) {
             return $value;
         }
-
-        $argv = explode(' ', $value);
-
-        return [
-            'field' => $argv[0],
-            'direction' => isset($argv[1]) ? $argv[1] : 'asc'
-        ];
+        return array_map(function ($item) {
+            $argv = explode(' ', $item);
+            return [
+                'field' => $argv[0],
+                'direction' => isset($argv[1]) ? $argv[1] : 'asc'
+            ];
+        }, explode(';', trim($value, '; ')));
     }
 
     protected function addOrderBy($query, $orderBy)
