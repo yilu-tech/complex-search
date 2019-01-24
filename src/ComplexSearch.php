@@ -125,7 +125,7 @@ class ComplexSearch
         if (!$this->query) {
             $this->query = $this->query();
         }
-        $this->addJoins();
+        $this->addJoins($this->query);
         return $this->input('size') ? $this->query->paginate($this->input('size')) : $this->query->get();
     }
 
@@ -467,15 +467,16 @@ class ComplexSearch
         return $this;
     }
 
-    protected function addJoins()
+    protected function addJoins($query)
     {
         foreach ($this->joinsRelation as $name => $join) {
             if (isset($this->joinDef[$name])) {
-                $this->query->leftJoin($join[0], $this->joinDef[$name]);
+                $query->leftJoin($join[0], $this->joinDef[$name]);
             } else {
-                $this->query->leftJoin($join[0], $join[1], '=', $join[2]);
+                $query->leftJoin($join[0], $join[1], '=', $join[2]);
             }
         }
+        $this->joinsRelation = [];
     }
 
     private function bindCondition()
