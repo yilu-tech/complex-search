@@ -163,16 +163,7 @@ class ComplexSearch
 
         $this->addWheres($this->query);
 
-        if ($orderBy = $this->getOrderBy()) {
-            foreach ($orderBy as $item)
-                $this->addOrderBy($this->query, $item);
-        }
-
-        if ($groupBy = $this->getGroupBy()) {
-            $this->addGroupBy($this->query, $groupBy);
-        }
-
-        return $this->query;
+        return $this->addOrderBy($this->query)->addGroupBy($this->query)->query;
     }
 
     public function where($column, $operator = null, $value = null)
@@ -422,9 +413,13 @@ class ComplexSearch
         }, $value);
     }
 
-    protected function addGroupBy($query, $groups)
+    protected function addGroupBy($query, $groups = null)
     {
-        $query->groupBy(...$groups);
+        $groups = $groups ?: $this->getGroupBy();
+
+        if ($groups) {
+            $query->groupBy(...$groups);
+        }
 
         return $this;
     }
@@ -461,9 +456,15 @@ class ComplexSearch
         }, explode(';', trim($value, '; ')));
     }
 
-    protected function addOrderBy($query, $orderBy)
+    protected function addOrderBy($query, $orderBy = null)
     {
-        $query->orderBy($orderBy['field'], $orderBy['direction']);
+        $items = $orderBy ?: $this->getOrderBy();
+
+        if ($items) {
+            foreach ($items as $item) {
+                $query->orderBy($item['field'], $item['direction']);
+            }
+        }
 
         return $this;
     }
@@ -478,6 +479,8 @@ class ComplexSearch
             }
         }
         $this->joinsRelation = [];
+
+        return $this;
     }
 
     private function bindCondition()
