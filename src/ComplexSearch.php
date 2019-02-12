@@ -46,6 +46,8 @@ class ComplexSearch
 
     protected $filterPreg = array();
 
+    protected $exportLinkTime = 120;
+
     /**
      * @var RelationNode
      */
@@ -131,20 +133,26 @@ class ComplexSearch
 
     protected function execExport()
     {
+        $data['uri'] = $_SERVER['DOCUMENT_URI'];
+        $data['controller'] = \Route::current()->getAction('controller');
         $data['params'] = $this->input('params', []);
         $data['fields'] = $this->input('fields', []);
         $data['extras'] = $this->input('extras', []);
-        $data['controller'] = \Route::current()->getAction()['controller'];
-
         if ($groupBy = $this->input('groupBy')) {
             $data['groupBy'] = $groupBy;
         }
-
         if ($orderBy = $this->input('orderBy')) {
             $data['orderBy'] = $orderBy;
         }
-
-        return urlencode(encrypt(json_encode($data)));
+        $data = json_encode($data);
+        $params = [
+            'code' => strtoupper(md5(32)),
+            'expires_in' => time() + $this->exportLinkTime * 60,
+            'nonce_str' => str_random(16),
+        ];
+        $params['sign'] = md5(http_build_query($params) . '&key=' . env('APP_KEY'));
+        \Cache::put('EXPORT:' . $params['code'], $data, $this->exportLinkTime);
+        return http_build_query($params);
     }
 
     public function query()
