@@ -146,7 +146,7 @@ class ComplexSearch
         }
         $data = json_encode($data);
         $params = [
-            'code' => strtoupper(md5(32)),
+            'code' => strtoupper(md5($data)),
             'expires_in' => time() + $this->exportLinkTime * 60,
             'nonce_str' => str_random(16),
         ];
