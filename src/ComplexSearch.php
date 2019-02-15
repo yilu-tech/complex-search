@@ -378,7 +378,7 @@ class ComplexSearch
     {
         $fields = $this->input('fields', []);
         if ($orderBy = $this->getOrderBy()) {
-            array_merge($fields, array_map(function ($item) {
+            $fields = array_merge($fields, array_map(function ($item) {
                 return $item['field'];
             }, $orderBy));
         }
