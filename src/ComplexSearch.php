@@ -377,9 +377,11 @@ class ComplexSearch
     public function getQueryFields()
     {
         $fields = $this->input('fields', []);
-//        if ($orderBy = $this->getOrderBy()) {
-//            $fields[] = $orderBy['field'];
-//        }
+        if ($orderBy = $this->getOrderBy()) {
+            array_merge($fields, array_map(function ($item) {
+                return $item['field'];
+            }, $orderBy));
+        }
         $fields = array_unique(array_merge($fields, $this->hidden));
         foreach ($fields as $field) {
             $node = $this->parseToMultiTree($this->find($field));
