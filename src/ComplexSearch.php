@@ -68,7 +68,7 @@ class ComplexSearch
         'date' => ['=', '<>', '>', '>=', '<', '<=', 'in']
     ];
 
-    private $fun = ['add', 'mul', 'sub', 'div', 'sum', 'max', 'min', 'count', 'avg', 'if', 'date_format', 'round', 'cast', 'concat', 'abs'];
+    private $fun = ['add', 'mul', 'sub', 'div', 'sum', 'max', 'min', 'count', 'avg', 'if', 'date_format', 'round', 'cast', 'concat', 'abs', 'group_concat'];
 
     public function make($request)
     {
