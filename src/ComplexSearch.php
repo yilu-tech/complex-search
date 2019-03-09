@@ -55,6 +55,8 @@ class ComplexSearch
 
     private $joinsRelation = array();
 
+    private $queryFields;
+
     private $loop = array();
 
     private $request = array();
@@ -165,13 +167,15 @@ class ComplexSearch
             throw new \Exception('query fields null');
         }
 
+        $this->addWheres($this->query);
+        $this->addOrderBy($this->query);
+        $this->addGroupBy($this->query);
+
         if ($this->root) {
             $this->addSelect($this->query, $this->getQueryFields());
         }
 
-        $this->addWheres($this->query);
-
-        return $this->addOrderBy($this->query)->addGroupBy($this->query)->query;
+        return $this->query;
     }
 
     public function where($column, $operator = null, $value = null)
@@ -289,13 +293,7 @@ class ComplexSearch
 
     public function field($field, $type = 0)
     {
-        $field = $this->find($field, $type);
-
-        if ($field['custom']) {
-            $field['_value'] = $this->parseToMultiTree($field)->toString();
-        }
-
-        return $this->makRaw($field, false);
+        return $this->toQueryString($this->find($field, $type), false);
     }
 
     public function find($str, $type = 0)
@@ -374,40 +372,52 @@ class ComplexSearch
         }
     }
 
+    protected function makeQueryFields($fields = [])
+    {
+        $fields = $this->input('fields', $fields);
+
+        $fields = array_unique(array_merge($fields, $this->hidden));
+
+        $this->queryFields = array();
+        foreach ($fields as $field) {
+            $field = $this->find($field);
+            $this->queryFields[$field['rename']] = $this->toQueryString($field);
+        }
+        return $this;
+    }
+
+    public function addQueryField($field)
+    {
+        $field = $this->find($field);
+        $queryFields = $this->getQueryFields();
+        if (!isset($queryFields[$field['rename']])) {
+            $this->queryFields[$field['rename']] = $this->toQueryString($field);
+        }
+        return $this;
+    }
+
+    public function hasQueryField($field)
+    {
+        $field = $this->parseField($field);
+
+        $queryFields = $this->getQueryFields();
+
+        return isset($queryFields[$field['rename']]);
+    }
+
     public function getQueryFields()
     {
-        $fields = $this->input('fields', []);
-        if ($orderBy = $this->getOrderBy()) {
-            $fields = array_merge($fields, array_map(function ($item) {
-                return $item['field'];
-            }, $orderBy));
+        if (!$this->queryFields) {
+            $this->makeQueryFields();
         }
-        $fields = array_unique(array_merge($fields, $this->hidden));
-        foreach ($fields as $field) {
-            $node = $this->parseToMultiTree($this->find($field));
-            if (is_array($node)) {
-                $this->loop[0][$node[0]] = $node[1];
-            } elseif ($node instanceof OperationNode) {
-                $this->cutMultiTree($node);
-            }
-        }
-        $fields = array();
-        foreach ($this->loop[0] as $key => $value) {
-            if ($value instanceof OperationNode) {
-                $fields[] = $value->toString() . " as {$key}";
-            } else {
-                $fields[] = strpos($value, '.' . $key) ? $value : "{$value} as {$key}";
-            }
-        }
-        return $fields;
+        return $this->queryFields;
     }
 
     protected function addSelect($query, $fields)
     {
         foreach ($fields as $field) {
-            $query->addSelect(\DB::raw($field));
+            $query->addSelect($field);
         }
-
         return $this;
     }
 
@@ -426,12 +436,10 @@ class ComplexSearch
     protected function addGroupBy($query, $groups = null)
     {
         $groups = $groups ?: $this->getGroupBy();
-
         if ($groups) {
             $query->groupBy(...$groups);
         }
-
-        return $this;
+        return $query;
     }
 
     /**
@@ -458,25 +466,33 @@ class ComplexSearch
             return $value;
         }
         return array_map(function ($item) {
-            $argv = explode(' ', $item);
-            return [
-                'field' => $argv[0],
-                'direction' => isset($argv[1]) ? $argv[1] : 'asc'
-            ];
+            $parts = explode(' ', $item);
+            $field = $parts[0];
+            $direction = isset($parts[1]) ? $parts[1] : 'asc';
+
+            if ($this->root) {
+                if (!$this->hasQueryField($field)) {
+                    $this->addQueryField($field);
+                }
+
+                if (is_string($this->queryFields[$field])) {
+                    $field = $this->queryFields[$field];
+                }
+            }
+
+            return compact('field', 'direction');
         }, explode(';', trim($value, '; ')));
     }
 
     protected function addOrderBy($query, $orderBy = null)
     {
         $items = $orderBy ?: $this->getOrderBy();
-
         if ($items) {
             foreach ($items as $item) {
                 $query->orderBy($item['field'], $item['direction']);
             }
         }
-
-        return $this;
+        return $query;
     }
 
     protected function addJoins($query)
@@ -524,7 +540,7 @@ class ComplexSearch
                 throw new \Exception("\"{$params[0]}\" value length more than 64");
             }
 
-            $params[0] = $field['custom'] ? $field['rename'] : $this->makRaw($field, false);
+            $params[0] = $this->hasQueryField($field['rename']) ? $this->queryFields[$field['rename']] : $this->toQueryString($field, false);
         }
 
         if ($params[1] === 'like' || $params[1] === 'not like') {
@@ -552,17 +568,17 @@ class ComplexSearch
         return $where;
     }
 
-    private function makRaw($field, $rename = true)
+    private function toQueryString($field, $rename = true)
     {
-        if (!$field['custom']) {
-            $field['_value'] = $field['table'] . '.' . $field['_value'];
+        if ($field['custom']) {
+            $fullname = $this->parseToMultiTree($field)->toString();
+        } else {
+            $fullname = $field['table'] . '.' . $field['_value'];
         }
-
         if ($rename && $field['_value'] !== '*' && $field['_value'] !== $field['rename']) {
-            return \DB::raw($field['_value'] . ' as ' . $field['rename']);
+            return \DB::raw($fullname . ' as ' . $field['rename']);
         }
-
-        return $field['_value'];
+        return $fullname;
     }
 
     function parseField($str)
