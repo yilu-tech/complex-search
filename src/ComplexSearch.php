@@ -163,16 +163,18 @@ class ComplexSearch
             $this->query = $this->root->query();
         }
 
-        if (!count($this->input('fields', []))) {
-            throw new \Exception('query fields null');
-        }
-
         $this->addWheres($this->query);
         $this->addOrderBy($this->query);
         $this->addGroupBy($this->query);
 
         if ($this->root) {
-            $this->addSelect($this->query, $this->getQueryFields());
+            $queryFields = $this->getQueryFields();
+
+            if (!count($queryFields)) {
+                throw new \Exception('query fields null');
+            }
+
+            $this->addSelect($this->query, $queryFields);
         }
 
         return $this->query;
@@ -261,8 +263,7 @@ class ComplexSearch
                 if (empty($value['label'])) {
                     $value['label'] = trans($this->lang . '.' . $node->table . '.' . $key);
                 }
-                unset($value['_value']);
-                unset($value['custom']);
+                unset($value['_value'], $value['custom']);
                 $fields[] = $value;
             }
         }
@@ -802,6 +803,8 @@ class ComplexSearch
             if (!in_array('deleted_at', $fills)) $fills[] = 'deleted_at';
         }
         $casts = array_merge($casts, $model->getCasts(), $model->fieldTypes ?: []);
+
+        $node->fields['*'] = $this->makeField('*', 'any', '*');
 
         foreach ($fills as $field) {
             $node->fields[$field] = $this->makeField($field, isset($casts[$field]) ? $casts[$field] : 'numeric', $field);
