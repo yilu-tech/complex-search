@@ -878,7 +878,7 @@ class ComplexSearch
                 } else {
 //                    $localKey = is_int($key) ? $relation->getHasCompareKey() : $model->getTable() . '.' . $value;
                     $relations[$fn_name] = [[$relation->getParent(), $relation->getQualifiedFirstKeyName(), $relation->getQualifiedLocalKeyName()],
-                        [$relation->getRelated(), $relation->getQualifiedParentKeyName(), $relation->getQualifiedForeignKeyName()]];
+                        [$relation->getRelated(), $relation->getQualifiedForeignKeyName(), $relation->getQualifiedParentKeyName()]];
                 }
             }
         }
