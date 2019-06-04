@@ -773,9 +773,9 @@ class ComplexSearch
     {
         $node = new RelationNode($model);
 
-        if ($join) $node->setJoin(...$join);
-
         $this->setFields($model, $node);
+
+        if ($join) $node->setJoin(...$join);
 
         return $node;
     }
@@ -807,8 +807,6 @@ class ComplexSearch
         $node->fields['*'] = $this->makeField('*', 'any', '*');
 
         foreach ($fills as $field) {
-            if ($field === $node->localKey) continue;
-
             $node->fields[$field] = $this->makeField($field, isset($casts[$field]) ? $casts[$field] : 'numeric', $field);
         }
 
