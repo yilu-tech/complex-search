@@ -515,7 +515,7 @@ class ComplexSearch
         foreach ($this->conditions as $key => $condition) {
             if (isset($condition['custom'])) continue;
 
-            $field = $this->find($key);
+            $field = $this->find($key, 1);
 
             $field['node']->fields[$field['name']] = array_merge($field['node']->fields[$field['name']], $condition);
         }
