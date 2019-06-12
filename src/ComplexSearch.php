@@ -376,34 +376,35 @@ class ComplexSearch
     protected function makeQueryFields($fields = [])
     {
         $fields = $this->input('fields', $fields);
-
         $fields = array_unique(array_merge($fields, $this->hidden));
 
         $this->queryFields = array();
         foreach ($fields as $field) {
             $field = $this->find($field);
-            $this->queryFields[$field['rename']] = $this->toQueryString($field);
+            $this->queryFields[$field['rename']] = $field;
         }
         return $this;
     }
 
     public function addQueryField($field)
     {
-        $field = $this->find($field);
+        if (is_string($field)) {
+            $field = $this->find($field);
+        }
         $queryFields = $this->getQueryFields();
         if (!isset($queryFields[$field['rename']])) {
-            $this->queryFields[$field['rename']] = $this->toQueryString($field);
+            $this->queryFields[$field['rename']] = $field;
         }
         return $this;
     }
 
     public function hasQueryField($field)
     {
-        $field = $this->parseField($field);
-
+        if (is_string($field)) {
+            $field = $this->find($field);
+        }
         $queryFields = $this->getQueryFields();
-
-        return isset($queryFields[$field['rename']]);
+        return isset($queryFields[$field['rename']]) && $queryFields[$field['rename']]['table'] === $field['table'];
     }
 
     public function getQueryFields()
@@ -417,7 +418,7 @@ class ComplexSearch
     protected function addSelect($query, $fields)
     {
         foreach ($fields as $field) {
-            $query->addSelect($field);
+            $query->addSelect($this->toQueryString($field));
         }
         return $this;
     }
@@ -472,13 +473,13 @@ class ComplexSearch
             $direction = isset($parts[1]) ? $parts[1] : 'asc';
 
             if ($this->root) {
+                $field = $this->find($field);
+
                 if (!$this->hasQueryField($field)) {
                     $this->addQueryField($field);
                 }
 
-                if (is_string($this->queryFields[$field])) {
-                    $field = $this->queryFields[$field];
-                }
+                $field = $field['rename'];
             }
 
             return compact('field', 'direction');
@@ -541,7 +542,7 @@ class ComplexSearch
                 throw new \Exception("\"{$params[0]}\" value length more than 64");
             }
 
-            $params[0] = $this->hasQueryField($field['rename']) ? $this->queryFields[$field['rename']] : $this->toQueryString($field, false);
+            $params[0] = $this->toQueryString($field, false);
         }
 
         if ($params[1] === 'like' || $params[1] === 'not like') {
@@ -569,7 +570,7 @@ class ComplexSearch
         return $where;
     }
 
-    private function toQueryString($field, $rename = true)
+    protected function toQueryString($field, $rename = true)
     {
         if ($field['custom']) {
             $fullname = $this->parseToMultiTree($field)->toString();
