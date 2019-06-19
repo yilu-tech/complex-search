@@ -803,7 +803,7 @@ class ComplexSearch
             $casts['deleted_at'] = 'date';
             if (!in_array('deleted_at', $fills)) $fills[] = 'deleted_at';
         }
-        $casts = array_merge($casts, $model->getCasts(), $model->fieldTypes ?: []);
+        $casts = array_merge($model->getCasts(), $casts, $model->fieldTypes ?: []);
 
         $node->fields['*'] = $this->makeField('*', 'any', '*');
 
