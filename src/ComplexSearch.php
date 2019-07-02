@@ -165,7 +165,6 @@ class ComplexSearch
 
         $this->addWheres($this->query);
         $this->addOrderBy($this->query);
-        $this->addGroupBy($this->query);
 
         if ($this->root) {
             $queryFields = $this->getQueryFields();
@@ -176,6 +175,8 @@ class ComplexSearch
 
             $this->addSelect($this->query, $queryFields);
         }
+
+        $this->addGroupBy($this->query);
 
         return $this->query;
     }
@@ -279,7 +280,6 @@ class ComplexSearch
 
     private function validateField($field, $node)
     {
-
 //        if ($node->primaryKey === $field) {
 //            return false;
 //        }
@@ -431,7 +431,11 @@ class ComplexSearch
             $value = [$value];
         }
         return array_map(function ($field) {
-            return $this->field($field);
+            $field = $this->find($field);
+            if ($field['custom']) {
+                throw new \Exception('group fields cannot be custom fields.');
+            }
+            return $this->toQueryString($field, false);
         }, $value);
     }
 
@@ -445,16 +449,18 @@ class ComplexSearch
     }
 
     /**
-     * @param $node
+     * @param $node RelationNode
      * @return $this
      */
     private function setGroupBy($node)
     {
-        if (!count($this->groupDef)) return $this;
+        $relationPath = $node->path();
+        if (!count($this->groupDef) || !count($relationPath)) return $this;
+
         $groups = array();
         foreach ($this->groupDef as $name => $value) {
-            if (in_array(is_int($name) ? $value : $name, $node->path())) {
-                $groups[] = is_int($name) ? implode('.', array_merge($node->path(), [$node->otherKey])) : $value;
+            if (in_array(is_int($name) ? $value : $name, $relationPath)) {
+                $groups[] = is_int($name) ? implode('.', array_merge($relationPath, [$node->otherKey])) : $value;
             }
         }
         $this->groupBy = array_unique(array_merge($this->groupBy, $groups));
@@ -475,11 +481,11 @@ class ComplexSearch
             if ($this->root) {
                 $field = $this->find($field);
 
-                if (!$this->hasQueryField($field)) {
+                if ($field['custom'] && !$this->hasQueryField($field)) {
                     $this->addQueryField($field);
                 }
 
-                $field = $field['rename'];
+                $field = $field['custom'] ? $field['rename'] : $this->toQueryString($field, false);
             }
 
             return compact('field', 'direction');
@@ -507,7 +513,6 @@ class ComplexSearch
             }
         }
         $this->joinsRelation = [];
-
         return $this;
     }
 
@@ -646,10 +651,10 @@ class ComplexSearch
         $parts = explode('|', $filed['_value']);
         $currentNode = $childNode = null;
         for ($i = count($parts) - 1; $i >= 0; $i--) {
-            $item = explode(':', $parts[$i]);
-            if (!in_array($item[0], $this->fun)) {
-                throw new \Exception(" \"{$filed['rename']}\" function \"{$item[0]}\" not exist ");
-            }
+            $item = explode(':', $parts[$i], 2);
+//            if (!in_array($item[0], $this->fun)) {
+//                throw new \Exception(" \"{$filed['rename']}\" function \"{$item[0]}\" not exist ");
+//            }
             $currentNode = new OperationNode($item[0], $filed['rename']);
             if ($childNode) {
                 $childNode->parentNode = $currentNode;
