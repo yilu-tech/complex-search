@@ -853,8 +853,10 @@ class ComplexSearch
             if ($relation instanceof BelongsTo) {
                 if (app()->version() < '5.6') {
                     $relations[$fn_name] = [[$relation->getRelated(), $relation->getQualifiedOtherKeyName(), $relation->getQualifiedForeignKey()]];
-                } else {
+                } elseif (app()->version() >= '5.7' && app()->version() < '5.8') {
                     $relations[$fn_name] = [[$relation->getRelated(), $relation->getQualifiedOwnerKeyName(), $relation->getQualifiedForeignKey()]];
+                } else {
+                    $relations[$fn_name] = [[$relation->getRelated(), $relation->getQualifiedOwnerKeyName(), $relation->getQualifiedForeignKeyName()]];
                 }
 
             } elseif ($relation instanceof HasOne || $relation instanceof HasMany) {
