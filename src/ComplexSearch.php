@@ -543,7 +543,7 @@ class ComplexSearch
                 throw new \Exception("where \"{$params[0]}\" operator \"{$params[1]}\" not exist");
             }
 
-            if (is_string($params[2]) && strlen($params[2]) > 64) {
+            if (is_string($params[2]) && mb_strlen($params[2]) > 64) {
                 throw new \Exception("\"{$params[0]}\" value length more than 64");
             }
 
