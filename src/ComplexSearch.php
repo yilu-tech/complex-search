@@ -679,7 +679,7 @@ class ComplexSearch
     {
         $params = explode(',', $params);
         foreach ($params as &$value) {
-            if ($value{0} === '@') {
+            if ($value[0] === '@') {
                 $field = $this->find(substr($value, 1));
                 $value = $this->parseToMultiTree($field, $currentNode, $renames);
             } elseif ($value === '$') {
