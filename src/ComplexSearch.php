@@ -624,7 +624,7 @@ class ComplexSearch
     private function matchField($name, $subject)
     {
         $index = strpos($subject, $name);
-        if ($index > 0 && $subject{$index - 1} !== '.') {
+        if ($index > 0 && $subject[$index - 1] !== '.') {
             return false;
         }
         return (strlen($subject) - strlen($name)) === $index;
