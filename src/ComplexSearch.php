@@ -563,10 +563,16 @@ class ComplexSearch
         } elseif ($params[1] === '<>' && $params[2] === null) {
             $where = ['name' => $name, 'fun' => 'whereNotNull', 'argv' => [$params[0], $bool]];
         } elseif ($params[1] === 'in') {
-            $where = [
-                ['name' => $name, 'fun' => 'where', 'argv' => [$params[0], '>=', $params[2][0]]],
-                ['name' => $name, 'fun' => 'where', 'argv' => [$params[0], '<=', $params[2][1]]]
-            ];
+            if (is_null($params[2][0])) {
+                $where = ['name' => $name, 'fun' => 'where', 'argv' => [$params[0], '<=', $params[2][1]]];
+            } elseif (is_null($params[2][1])) {
+                $where = ['name' => $name, 'fun' => 'where', 'argv' => [$params[0], '>=', $params[2][0]]];
+            } else {
+                $where = [
+                    ['name' => $name, 'fun' => 'where', 'argv' => [$params[0], '>=', $params[2][0]]],
+                    ['name' => $name, 'fun' => 'where', 'argv' => [$params[0], '<=', $params[2][1]]]
+                ];
+            }
         } elseif (is_array($params[2])) {
             $where = ['name' => $name, 'fun' => $params[1] === '=' ? 'whereIn' : 'whereNotIn', 'argv' => [$params[0], $params[2], $bool]];
         } else {
