@@ -551,7 +551,7 @@ class ComplexSearch
         }
 
         if ($params[1] === 'like' || $params[1] === 'not like') {
-            if ($params[2]) {
+            if (!is_null($params[2])) {
                 $params[2] = '%' . $params[2] . '%';
             } else {
                 $params[1] = $params[1] === 'like' ? '=' : '<>';
