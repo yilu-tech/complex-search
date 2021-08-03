@@ -2,11 +2,10 @@
   "name": "yilu-tech/complex-search",
   "description": "laravel complex search",
   "type": "library",
-  "license": "MIT",
   "authors": [
     {
       "name": "yilu",
-      "email": "yilu@yilu-tech.com"
+      "email": "developer@yilu.co"
     }
   ],
   "minimum-stability": "dev",
